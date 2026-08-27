@@ -125,14 +125,14 @@ def _load_memory() -> list[str]:
 
 
 def _save_to_memory(prompts: list[str]) -> None:
-    """把新生成的 prompts 追加到记忆文件。"""
+    """把新生成的 prompts 追加到记忆文件，始终保留最新 200 条。"""
     if not prompts:
         return
     memory = _load_memory()
     memory.extend(prompts)
-    # 只保留最近 500 条，避免无限增长
-    if len(memory) > 500:
-        memory = memory[-500:]
+    # 始终只保留最新 200 条，挤掉最早的
+    if len(memory) > MEMORY_LIMIT:
+        memory = memory[-MEMORY_LIMIT:]
     try:
         with open(MEMORY_FILE, "w", encoding="utf-8") as f:
             json.dump(memory, f, ensure_ascii=False, indent=2)
@@ -141,11 +141,8 @@ def _save_to_memory(prompts: list[str]) -> None:
 
 
 def _get_used_prompts() -> list[str]:
-    """获取已用过的 prompts（≤200 条传给 AI 去重，超 200 返回空）。"""
-    memory = _load_memory()
-    if len(memory) >= MEMORY_LIMIT:
-        return []
-    return memory[-MEMORY_LIMIT:]
+    """获取已用过的 prompts（始终返回全部记忆，用于 AI 去重）。"""
+    return _load_memory()
 
 
 def _extract_scene(prompt: str) -> str:
