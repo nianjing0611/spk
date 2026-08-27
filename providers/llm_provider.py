@@ -113,10 +113,10 @@ def _call_api(product_info, count, base_url, api_key, model, temperature) -> lis
             {"role": "user", "content": user_msg},
         ],
         "temperature": temperature,
-        "max_tokens": 2000,
+        "max_tokens": min(8192, max(4096, count * 300)),
     }
     r = requests.post(
-        f"{base_url}/chat/completions", headers=headers, json=payload, timeout=60
+        f"{base_url}/chat/completions", headers=headers, json=payload, timeout=90
     )
     r.raise_for_status()
     msg = r.json()["choices"][0]["message"]
