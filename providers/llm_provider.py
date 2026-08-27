@@ -46,37 +46,30 @@ LOCAL_STYLES = [
     "泳池边背景，夏日清凉",
 ]
 
-# 一致性选项：保持同一类别/风格/色调/构图，而非完全不变
+# 一致性选项到简短指令的映射（用于 SYSTEM_PROMPT 和 prompt 末尾）
 _CONSIST_MAP = {
-    "scene": "保持同一场景类别（如原图是居家类就换居家背景，是自然类就换自然背景）",
-    "style": "保持同一视觉风格（如原图是高级感就换高级感背景，是清新感就换清新感背景）",
-    "color": "保持同一色调倾向（如原图是暖色调就换暖色调背景，是冷色调就换冷色调背景）",
-    "layout": "保持相似构图布局",
+    "scene": "场景类别",
+    "style": "视觉风格",
+    "color": "色调倾向",
+    "layout": "构图布局",
 }
 
-# system prompt 模板：识别原图类别 → 换同类别全新背景
+# system prompt：识别原图类别 → 换同类别全新背景（一致性逻辑全在这里，每条 prompt 不重复）
 SYSTEM_PROMPT = """你是电商商品图图生图提示词专家。根据用户给的需求，生成 N 条换背景提示词。
 
-核心原则：这是图生图，模型能看到原图。首先识别原图的场景类别、视觉风格和色调倾向，然后生成 N 条全新背景的提示词，每条换一个不同的背景，但须与原图属于同一类别/风格/色调（根据用户勾选决定）。
+核心原则：这是图生图，模型能看到原图。先识别原图的场景类别、视觉风格和色调倾向，再生成 N 条全新背景的提示词。每条换一个完全不同的背景，但须与原图属于同一类别/风格/色调（根据用户勾选决定）。
 
 规则：
 1. 用户填写的需求是唯一商品语义来源，不得引用或推测任何历史商品资料
 2. 不得虚构或猜测品牌、商品名、型号、规格、标签文字或卖点
 3. 需求未写明时只能称为"原产品"或"原商品"
 4. 不得加入用户明确排除的元素
-5. 每条 ≤100 字，描述一个全新的背景场景
+5. 每条 ≤50 字，只描述一个背景场景，不要重复一致性说明
 6. 只输出 JSON 字符串数组，不要 Markdown、编号、解释
 7. 恰好生成 {count} 条
 8. {consistency_clause}
-9. 10 条必须是完全不同的背景场景（如山谷溪流、现代厨房、白色影棚、红色喜庆等），不得重复同一类别
+9. 10 条必须是完全不同的背景场景（如山谷溪流、现代厨房、白色影棚、红色喜庆等）
 10. 背景必须是全新的，不能只改材质或光影，要换整个场景"""
-
-# 保护文字模板
-PROTECTION_TEMPLATE = (
-    "更换全新背景场景，{consistency_text}，"
-    "不改变产品主体与包装文字，不增加多余文字，"
-    "不修改品牌、价格、规格和关键卖点，保持商品比例与真实质感"
-)
 
 
 def _build_consistency_clause(consistency: dict) -> str:
@@ -87,18 +80,18 @@ def _build_consistency_clause(consistency: dict) -> str:
             items.append(label)
     if not items:
         return "10 条可以自由选择任何背景类别，无需与原图保持一致。"
-    return f"每条必须满足：{'、'.join(items)}。模型需先识别原图的场景类别/风格/色调，再选择同类别中的全新背景。"
+    return f"每条必须保持原图的{'、'.join(items)}不变，在此约束下选择全新背景场景。"
 
 
-def _build_consistency_text(consistency: dict) -> str:
-    """根据一致性选项，生成 PROTECTION_TEXT 的中间部分。"""
+def _build_consistency_suffix(consistency: dict) -> str:
+    """根据一致性选项，生成每条 prompt 末尾的简短后缀。"""
     items = []
     for k, label in _CONSIST_MAP.items():
         if consistency.get(k):
-            items.append(label)
+            items.append(f"保持{label}")
     if not items:
-        return "无需保持一致"
-    return "、".join(items)
+        return ""
+    return "，".join(items)
 
 
 def generate(product_info: dict, count: int, llm_cfg: dict) -> list[str]:
@@ -156,29 +149,21 @@ def _call_api(product_info, count, base_url, api_key, model, temperature) -> lis
 
 
 def _build_user_msg(product_info: dict, count: int) -> str:
-    """构造用户消息：优先用自由描述，没有则用结构化字段。"""
+    """构造用户消息：精简，一致性逻辑已在 SYSTEM_PROMPT 中说明。"""
     desc = (product_info.get("description") or "").strip()
     consistency = product_info.get("consistency") or {}
-    protection_text = PROTECTION_TEMPLATE.format(
-        consistency_text=_build_consistency_text(consistency)
-    )
+    consist_suffix = _build_consistency_suffix(consistency)
     locked = product_info.get("locked_text", "")
-    protect = protection_text + (f"，必须保留:{locked}" if locked else "")
-    consist_items = []
-    for k, label in _CONSIST_MAP.items():
-        if consistency.get(k):
-            consist_items.append(label)
-    consist_clause = (
-        f'每条必须满足：{"、".join(consist_items)}。模型需识别原图类别后选择同类别全新背景。'
-        if consist_items
-        else "每条只需描述一个全新背景场景，无需与原图保持一致。"
-    )
+    protect_parts = ["不改变产品主体与包装文字", "不增加多余文字", "不修改品牌、价格、规格和关键卖点", "保持商品比例与真实质感"]
+    if locked:
+        protect_parts.append(f"必须保留:{locked}")
+    protect = "，".join(protect_parts)
+
     if desc:
         return (
             f"用户描述：{desc}\n"
-            f"保护文字：{protect}\n"
-            f"一致性要求：{consist_clause}\n"
-            f"请根据以上描述生成 {count} 条换背景提示词，每条换一个完全不同的全新背景场景。"
+            f"保护：{protect}\n"
+            f'请生成 {count} 条换背景提示词。每条只写背景场景，末尾加"{consist_suffix}"。不要重复一致性说明。'
         )
     parts = []
     for k in ["name", "selling_points", "price", "activity", "specs"]:
@@ -188,9 +173,8 @@ def _build_user_msg(product_info: dict, count: int) -> str:
     info = "，".join(parts) if parts else "商品信息以源图为准"
     return (
         f"商品信息：{info}\n"
-        f"保护文字：{protect}\n"
-        f"一致性要求：{consist_clause}\n"
-        f"请生成 {count} 条换背景提示词，每条换一个完全不同的全新背景场景。"
+        f"保护：{protect}\n"
+        f'请生成 {count} 条换背景提示词。每条只写背景场景，末尾加"{consist_suffix}"。不要重复一致性说明。'
     )
 
 
@@ -207,12 +191,10 @@ def _extract_json_array(text: str) -> list:
 
 
 def generate_local(product_info: dict, count: int) -> list:
-    """本地兜底：30 种场景循环 + 一致性选项拼接。"""
-    desc = (product_info.get("description") or "").strip()
+    """本地兜底：精简 prompt，场景 + 简短一致性后缀。"""
     consistency = product_info.get("consistency") or {}
-    protection_text = PROTECTION_TEMPLATE.format(
-        consistency_text=_build_consistency_text(consistency)
-    )
+    consist_suffix = _build_consistency_suffix(consistency)
+    desc = (product_info.get("description") or "").strip()
     if desc:
         info = desc[:60]
     else:
@@ -223,18 +205,13 @@ def generate_local(product_info: dict, count: int) -> list:
                 parts.append(f"{k}: {v}")
         info = "，".join(parts) if parts else "原产品"
     locked = product_info.get("locked_text", "")
-    protect = protection_text + (f"，必须保留:{locked}" if locked else "")
-
-    consist_items = []
-    for k, label in _CONSIST_MAP.items():
-        if consistency.get(k):
-            consist_items.append(label)
-    consist_text = "、".join(consist_items) if consist_items else "无需保持一致"
 
     result = []
     for i in range(count):
         scene = LOCAL_STYLES[i % len(LOCAL_STYLES)]
-        p = f"换全新背景为{scene}，{consist_text}，方案{i + 1:02d}，电商商品卡，1:1比例，{protect}。"
+        p = f"{scene}，{consist_suffix}，不改变产品主体与包装文字，保持商品比例与真实质感"
+        if locked:
+            p += f"，必须保留:{locked}"
         result.append(p)
     return result
 
