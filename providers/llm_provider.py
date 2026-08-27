@@ -2,8 +2,16 @@
 
 import json
 import re
+from collections import Counter
+from pathlib import Path
 
 import requests
+
+from config_manager import BASE_DIR
+
+# 记忆存储文件：累积 AI 生成的 prompts，用于去重和更新本地模板
+MEMORY_FILE = BASE_DIR / "prompts_memory.json"
+MEMORY_LIMIT = 200  # 超过此条数后不再向 AI 传"已用过"列表（允许重复）
 
 # 30 种不同类别的场景描述（覆盖自然/居家/影棚/户外/节日等）
 # 模型需识别原图场景类别，然后从同类别中选一个全新场景替换背景
@@ -90,18 +98,98 @@ def generate(product_info: dict, count: int, llm_cfg: dict) -> list[str]:
         return generate_local(product_info, count)
 
     try:
-        return _call_api(
+        prompts = _call_api(
             product_info, count, base_url, api_key, model,
             llm_cfg.get("temperature", 0.2),
         )
+        # 保存到记忆
+        _save_to_memory(prompts)
+        # 尝试更新本地模板
+        _maybe_update_local_styles()
+        return prompts
     except Exception as e:
         print(f"[LLM] API 调用失败，回退本地: {e}")
         return generate_local(product_info, count)
 
 
+# ==================== 记忆存储 ====================
+
+def _load_memory() -> list[str]:
+    """读取已保存的 prompts 记忆。"""
+    try:
+        with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return [str(p) for p in data if isinstance(p, str)]
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def _save_to_memory(prompts: list[str]) -> None:
+    """把新生成的 prompts 追加到记忆文件。"""
+    if not prompts:
+        return
+    memory = _load_memory()
+    memory.extend(prompts)
+    # 只保留最近 500 条，避免无限增长
+    if len(memory) > 500:
+        memory = memory[-500:]
+    try:
+        with open(MEMORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(memory, f, ensure_ascii=False, indent=2)
+    except OSError as e:
+        print(f"[LLM] 记忆保存失败: {e}")
+
+
+def _get_used_prompts() -> list[str]:
+    """获取已用过的 prompts（≤200 条传给 AI 去重，超 200 返回空）。"""
+    memory = _load_memory()
+    if len(memory) >= MEMORY_LIMIT:
+        return []
+    return memory[-MEMORY_LIMIT:]
+
+
+def _extract_scene(prompt: str) -> str:
+    """从 prompt 提取核心场景描述（去掉一致性后缀和保护文字）。"""
+    # 去掉开头的"换背景为"
+    s = re.sub(r"^换背景为", "", prompt)
+    # 去掉末尾的一致性后缀和保护文字
+    s = re.split(r"，保持场景类别|，保持视觉风格|，保持色调倾向|，保持构图布局|，不改变产品主体|，必须保留", s)[0]
+    return s.strip()
+
+
+def _maybe_update_local_styles() -> None:
+    """从记忆里提取高频场景，补充到 LOCAL_STYLES（去重，最多 50 条）。"""
+    memory = _load_memory()
+    if len(memory) < 30:
+        return  # 记忆太少不更新
+    # 提取核心场景
+    scenes = [_extract_scene(p) for p in memory]
+    scenes = [s for s in scenes if len(s) >= 4]  # 过滤太短的
+    if not scenes:
+        return
+    # 统计频次，取高频
+    counter = Counter(scenes)
+    # 新场景 = 频次 ≥2 且不在当前 LOCAL_STYLES 中
+    current = set(LOCAL_STYLES)
+    new_scenes = []
+    for scene, cnt in counter.most_common():
+        if scene not in current and cnt >= 2:
+            new_scenes.append(scene)
+        if len(LOCAL_STYLES) + len(new_scenes) >= 50:
+            break
+    if new_scenes:
+        LOCAL_STYLES.extend(new_scenes)
+
+
 def _call_api(product_info, count, base_url, api_key, model, temperature) -> list:
     """调 OpenAI 兼容 /chat/completions。对齐参考软件：极简调用。"""
     user_msg = _build_user_msg(product_info, count)
+    # 记忆去重：把已用过的 prompts 传给 AI（≤200 条时）
+    used = _get_used_prompts()
+    if used:
+        # 只取核心场景摘要，避免 token 爆炸
+        used_summary = "; ".join([_extract_scene(p) for p in used[-50:]])
+        user_msg += f"\n\n已用过的场景（请避免重复）：{used_summary}"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
@@ -163,15 +251,32 @@ def _build_user_msg(product_info: dict, count: int) -> str:
 
 
 def _extract_json_array(text: str) -> list:
-    """从文本提取 JSON 字符串数组。"""
+    """从文本提取 JSON 数组。支持字符串数组和对象数组，兼容 markdown 代码块。"""
+    # 去掉 markdown 代码块标记
+    text = re.sub(r"```(?:json)?\s*", "", text)
+    text = text.replace("```", "")
     m = re.search(r"\[.*\]", text, re.DOTALL)
     if not m:
         return []
     try:
         arr = json.loads(m.group(0))
-        return [str(x) for x in arr if isinstance(x, str)]
     except json.JSONDecodeError:
         return []
+    result = []
+    for x in arr:
+        if isinstance(x, str):
+            result.append(x)
+        elif isinstance(x, dict):
+            # 对象数组：提取 prompt 字段（或第一个字符串字段）
+            p = x.get("prompt") or x.get("text") or ""
+            if not p:
+                for v in x.values():
+                    if isinstance(v, str) and len(v) > 5:
+                        p = v
+                        break
+            if p:
+                result.append(str(p))
+    return result
 
 
 def generate_local(product_info: dict, count: int) -> list:

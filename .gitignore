@@ -2,6 +2,7 @@
 config.json
 auth.json
 sessions.json
+prompts_memory.json
 batch_queue.json
 batch_queue.before-*.json
 
