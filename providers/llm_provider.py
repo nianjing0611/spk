@@ -149,30 +149,34 @@ def _call_api(product_info, count, base_url, api_key, model, temperature) -> lis
 
 
 def _build_user_msg(product_info: dict, count: int) -> str:
-    """构造用户消息：精简，一致性逻辑已在 SYSTEM_PROMPT 中说明。"""
+    """构造用户消息：始终包含商品字段作为上下文，描述是用户指令。"""
     desc = (product_info.get("description") or "").strip()
     consistency = product_info.get("consistency") or {}
     consist_suffix = _build_consistency_suffix(consistency)
     locked = product_info.get("locked_text", "")
-    protect_parts = ["不改变产品主体与包装文字", "不增加多余文字", "不修改品牌、价格、规格和关键卖点", "保持商品比例与真实质感"]
+
+    # 商品字段：始终收集，有值就带上
+    product_parts = []
+    for k, label in [("name", "商品名"), ("selling_points", "卖点"),
+                      ("price", "价格"), ("activity", "活动信息"), ("specs", "规格")]:
+        v = (product_info.get(k) or "").strip()
+        if v:
+            product_parts.append(f"{label}: {v}")
+    product_info_text = "，".join(product_parts) if product_parts else "商品信息以源图为准"
+
+    # 保护文字
+    protect_parts = ["不改变产品主体与包装文字", "不增加多余文字",
+                     "不修改品牌、价格、规格和关键卖点", "保持商品比例与真实质感"]
     if locked:
         protect_parts.append(f"必须保留:{locked}")
     protect = "，".join(protect_parts)
 
-    if desc:
-        return (
-            f"用户描述：{desc}\n"
-            f"保护：{protect}\n"
-            f'请生成 {count} 条换背景提示词。每条以"换背景为"开头，只写背景场景，末尾加"{consist_suffix}"。'
-        )
-    parts = []
-    for k in ["name", "selling_points", "price", "activity", "specs"]:
-        v = product_info.get(k)
-        if v:
-            parts.append(f"{k}: {v}")
-    info = "，".join(parts) if parts else "商品信息以源图为准"
+    # 描述是用户给 AI 的指令
+    instruction = desc if desc else "仅更换背景"
+
     return (
-        f"商品信息：{info}\n"
+        f"指令：{instruction}\n"
+        f"商品信息：{product_info_text}\n"
         f"保护：{protect}\n"
         f'请生成 {count} 条换背景提示词。每条以"换背景为"开头，只写背景场景，末尾加"{consist_suffix}"。'
     )
@@ -191,25 +195,24 @@ def _extract_json_array(text: str) -> list:
 
 
 def generate_local(product_info: dict, count: int) -> list:
-    """本地兜底：精简 prompt，场景 + 简短一致性后缀。"""
+    """本地兜底：始终包含商品字段，场景 + 一致性后缀。"""
     consistency = product_info.get("consistency") or {}
     consist_suffix = _build_consistency_suffix(consistency)
-    desc = (product_info.get("description") or "").strip()
-    if desc:
-        info = desc[:60]
-    else:
-        parts = []
-        for k in ["name", "selling_points", "price", "activity", "specs"]:
-            v = product_info.get(k)
-            if v:
-                parts.append(f"{k}: {v}")
-        info = "，".join(parts) if parts else "原产品"
     locked = product_info.get("locked_text", "")
+
+    # 收集商品信息
+    product_parts = []
+    for k, label in [("name", "商品名"), ("selling_points", "卖点"),
+                      ("price", "价格"), ("activity", "活动信息"), ("specs", "规格")]:
+        v = (product_info.get(k) or "").strip()
+        if v:
+            product_parts.append(f"{label}:{v}")
+    product_text = "，".join(product_parts) if product_parts else "原产品"
 
     result = []
     for i in range(count):
         scene = LOCAL_STYLES[i % len(LOCAL_STYLES)]
-        p = f"换背景为{scene}，{consist_suffix}，不改变产品主体与包装文字，保持商品比例与真实质感"
+        p = f"换背景为{scene}，{consist_suffix}，{product_text}，不改变产品主体与包装文字，保持商品比例与真实质感"
         if locked:
             p += f"，必须保留:{locked}"
         result.append(p)
