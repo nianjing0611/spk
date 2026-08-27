@@ -154,10 +154,11 @@ body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--t
       </details>
       <div class="prompt-tools">
         <input type="number" id="promptCount" value="10" min="1" max="50" style="max-width:60px">
-        <button onclick="aiGenerate()">AI 生成 Prompts</button>
+        <button id="btnAiGen" onclick="aiGenerate()">AI 生成 Prompts</button>
         <button onclick="addPrompt()">+ 添加</button>
         <button onclick="clearPrompts()">清空</button>
       </div>
+      <div id="aiStatus" style="margin-top:4px;font-size:12px;color:var(--text-dim);display:none"></div>
       <div style="margin-top:6px;font-size:12px;color:var(--text-dim)">
         一致性选项（换背景时保持哪些不变）：
         <label style="margin-left:8px"><input type="checkbox" id="optScene" checked onchange="syncConsistency()"> 场景一致性</label>
@@ -183,7 +184,7 @@ body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--t
         <div class="current-task" id="currentTask"></div>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:12px">
-        <button style="flex:1;padding:8px;background:var(--highlight);border:none;border-radius:4px;color:#fff;cursor:pointer" onclick="startTask()">开始</button>
+        <button id="btnStart" style="flex:1;padding:8px;background:var(--highlight);border:none;border-radius:4px;color:#fff;cursor:pointer" onclick="startTask()">开始</button>
         <button style="flex:1;padding:8px;background:var(--accent);border:1px solid var(--border);border-radius:4px;color:var(--text);cursor:pointer" onclick="stopTask()">停止</button>
       </div>
       <div class="section-title">日志</div>
@@ -399,6 +400,40 @@ function syncConsistency() {
 }
 
 // ===== Prompts =====
+let _aiGenTimer = null;
+let _aiGenStart = 0;
+
+function _setAiGenerating(generating) {
+  const btn = document.getElementById('btnAiGen');
+  const status = document.getElementById('aiStatus');
+  if (generating) {
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+    btn.textContent = '生成中...';
+    status.style.display = 'block';
+    status.style.color = '#e94560';
+    _aiGenStart = Date.now();
+    status.textContent = '⏳ 正在调用 AI 生成提示词...';
+    // 启动计时器，显示已用时间
+    _aiGenTimer = setInterval(() => {
+      const s = ((Date.now() - _aiGenStart) / 1000).toFixed(1);
+      status.textContent = `⏳ 正在调用 AI 生成提示词... (${s}s)`;
+    }, 200);
+  } else {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.textContent = 'AI 生成 Prompts';
+    if (_aiGenTimer) { clearInterval(_aiGenTimer); _aiGenTimer = null; }
+  }
+}
+
+function _setAiStatus(msg, color) {
+  const status = document.getElementById('aiStatus');
+  status.style.display = 'block';
+  if (color) status.style.color = color;
+  status.textContent = msg;
+}
+
 async function aiGenerate() {
   try {
     const product_info = {
@@ -417,16 +452,32 @@ async function aiGenerate() {
       },
     };
     const count = parseInt(document.getElementById('promptCount').value) || 10;
+    _setAiGenerating(true);
     const r = await fetch('/api/ai-generate', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({product_info, count})
     });
     const d = await r.json();
-    if (d.error) { alert(d.error); return; }
+    _setAiGenerating(false);
+    if (d.error) {
+      _setAiStatus('❌ 生成失败：' + d.error, '#e94560');
+      setTimeout(() => { document.getElementById('aiStatus').style.display = 'none'; }, 5000);
+      return;
+    }
     prompts = d.prompts || [];
     renderPrompts();
-    if (d.is_local) alert('LLM 未配置，使用本地兜底风格。请在设置面板配置 API。');
-  } catch(e) { alert('AI 生成失败：' + e.message); }
+    const elapsed = ((Date.now() - _aiGenStart) / 1000).toFixed(1);
+    if (d.is_local) {
+      _setAiStatus(`⚠️ 使用本地兜底生成 ${prompts.length} 条 (${elapsed}s)，请在设置面板配置 LLM API`, '#e94560');
+    } else {
+      _setAiStatus(`✅ 已生成 ${prompts.length} 条提示词 (${elapsed}s)`, '#4e9');
+    }
+    setTimeout(() => { document.getElementById('aiStatus').style.display = 'none'; }, 4000);
+  } catch(e) {
+    _setAiGenerating(false);
+    _setAiStatus('❌ AI 生成失败：' + e.message, '#e94560');
+    setTimeout(() => { document.getElementById('aiStatus').style.display = 'none'; }, 5000);
+  }
 }
 
 function addPrompt() { prompts.push(''); renderPrompts(); }
@@ -444,16 +495,35 @@ function delPrompt(i) { prompts.splice(i, 1); renderPrompts(); }
 // ===== 任务 =====
 async function startTask() {
   if (!images.length || !prompts.filter(p=>p.trim()).length) { alert('请添加图片和提示词'); return; }
-  const r = await fetch('/api/start', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({
-      images: images.map(i=>({path:i.path, name:i.name})),
-      prompts: prompts.filter(p=>p.trim()),
-      ratio: '1:1'
-    })
-  });
-  const d = await r.json();
-  if (d.error) alert(d.error);
+  const btn = document.getElementById('btnStart');
+  btn.disabled = true;
+  btn.style.opacity = '0.6';
+  btn.textContent = '启动中...';
+  try {
+    const r = await fetch('/api/start', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        images: images.map(i=>({path:i.path, name:i.name})),
+        prompts: prompts.filter(p=>p.trim()),
+        ratio: '1:1'
+      })
+    });
+    const d = await r.json();
+    if (d.error) { alert(d.error); resetStartBtn(); return; }
+    btn.textContent = '运行中...';
+    btn.style.background = 'var(--accent)';
+  } catch(e) {
+    resetStartBtn();
+    alert('启动失败：' + e.message);
+  }
+}
+
+function resetStartBtn() {
+  const btn = document.getElementById('btnStart');
+  btn.disabled = false;
+  btn.style.opacity = '1';
+  btn.textContent = '开始';
+  btn.style.background = 'var(--highlight)';
 }
 
 async function stopTask() {
@@ -485,8 +555,14 @@ async function pollState() {
     ).join('');
     logBox.scrollTop = logBox.scrollHeight;
     // 运行中刷新输出；任务刚结束也刷一次
-    if (d.running) loadOutputs();
-    else if (window._lastRunning) loadOutputs();
+    if (d.running) {
+      loadOutputs();
+    } else if (window._lastRunning) {
+      // 任务刚结束
+      loadOutputs();
+      resetStartBtn();
+      document.getElementById('currentTask').textContent = '✅ 任务完成';
+    }
     window._lastRunning = d.running;
   } catch(e) {}
 }
