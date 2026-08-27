@@ -9,31 +9,31 @@ setlocal
 set "BASE=%~dp0"
 
 echo ============================================
-echo   å®‰è£… Python ä¾èµ–ï¼ˆåªéœ€æ‰§è¡Œä¸€æ¬¡ï¼‰
+echo   °²×° Python ÒÀÀµ£¨Ö»ÐèÖ´ÐÐÒ»´Î£©
 echo ============================================
-echo å½“å‰ç›®å½•: %BASE%
+echo µ±Ç°Ä¿Â¼: %BASE%
 echo.
 
 where python >nul 2>nul
 if %errorlevel% neq 0 (
-    echo [é”™è¯¯] æœªæ£€æµ‹åˆ° Pythonã€‚
-    echo è¯·ä¸‹è½½å®‰è£… Python 3.10+ï¼Œå®‰è£…æ—¶å‹¾é€‰ "Add Python to PATH":
+    echo [´íÎó] Î´¼ì²âµ½ Python¡£
+    echo ÇëÏÂÔØ°²×° Python 3.10+£¬°²×°Ê±¹´Ñ¡ "Add Python to PATH":
     echo   https://www.python.org/downloads/
     goto :END
 )
 
-echo [1/2] å‡çº§ pip...
+echo [1/2] Éý¼¶ pip...
 python -m pip install --upgrade pip
 echo.
-echo [2/2] å®‰è£… requirements.txt ä¸­çš„ä¾èµ–...
+echo [2/2] °²×° requirements.txt ÖÐµÄÒÀÀµ...
 python -m pip install -r "%BASE%requirements.txt"
 echo.
-echo ===== ä¾èµ–å®‰è£…å®Œæˆ =====
-echo å¦‚æžœä¸Šé¢æœ‰çº¢è‰²é”™è¯¯ï¼ŒæŠŠé”™è¯¯æˆªå›¾å‘å‡ºæ¥ã€‚
+echo ===== ÒÀÀµ°²×°Íê³É =====
+echo Èç¹ûÉÏÃæÓÐºìÉ«´íÎó£¬°Ñ´íÎó½ØÍ¼·¢³öÀ´¡£
 
 :END
 echo.
-echo ===== çª—å£å·²ä¿ç•™ï¼Œå¯æ»šåŠ¨æŸ¥çœ‹ä¸Šæ–¹è¾“å‡º =====
-echo æŒ‰ä»»æ„é”®å…³é—­æœ¬çª—å£ã€‚
+echo ===== ´°¿ÚÒÑ±£Áô£¬¿É¹ö¶¯²é¿´ÉÏ·½Êä³ö =====
+echo °´ÈÎÒâ¼ü¹Ø±Õ±¾´°¿Ú¡£
 pause >nul
 endlocal

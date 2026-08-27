@@ -9,44 +9,44 @@ setlocal
 set "BASE=%~dp0"
 
 echo ============================================
-echo   å¯åŠ¨ MyTool æœåŠ¡
-echo   å¯åŠ¨åŽæµè§ˆå™¨è®¿é—® http://127.0.0.1:9527/
+echo   Æô¶¯ MyTool ·þÎñ
+echo   Æô¶¯ºóä¯ÀÀÆ÷·ÃÎÊ http://127.0.0.1:9527/
 echo ============================================
-echo å½“å‰ç›®å½•: %BASE%
+echo µ±Ç°Ä¿Â¼: %BASE%
 echo.
 
 if not exist "%BASE%app.py" (
-    echo [é”™è¯¯] æœªæ‰¾åˆ° app.py
-    echo è¯·ç¡®è®¤åˆ†å‘åŒ…å®Œæ•´ï¼Œæˆ–ç§»åŠ¨åˆ°çº¯è‹±æ–‡ç›®å½•é‡è¯•ã€‚
+    echo [´íÎó] Î´ÕÒµ½ app.py
+    echo ÇëÈ·ÈÏ·Ö·¢°üÍêÕû£¬»òÒÆ¶¯µ½´¿Ó¢ÎÄÄ¿Â¼ÖØÊÔ¡£
     goto :END
 )
 
 if not exist "%BASE%config.json" (
     if exist "%BASE%config.example.json" (
         copy "%BASE%config.example.json" "%BASE%config.json" >nul
-        echo [é¦–æ¬¡è¿è¡Œ] å·²ä»Ž config.example.json å¤åˆ¶ config.json
-        echo è¯·åœ¨ç½‘é¡µè®¾ç½®ä¸­å¡«å…¥ DeepSeek API Keyã€‚
+        echo [Ê×´ÎÔËÐÐ] ÒÑ´Ó config.example.json ¸´ÖÆ config.json
+        echo ÇëÔÚÍøÒ³ÉèÖÃÖÐÌîÈë DeepSeek API Key¡£
         echo.
     )
 )
 
 where python >nul 2>nul
 if %errorlevel% neq 0 (
-    echo [é”™è¯¯] æœªæ£€æµ‹åˆ° Pythonã€‚
-    echo è¯·å…ˆè¿è¡Œ"å®‰è£…ä¾èµ–.bat"ï¼Œæˆ–ä¸‹è½½ Python 3.10+ å¹¶å‹¾é€‰ Add to PATH:
+    echo [´íÎó] Î´¼ì²âµ½ Python¡£
+    echo ÇëÏÈÔËÐÐ"°²×°ÒÀÀµ.bat"£¬»òÏÂÔØ Python 3.10+ ²¢¹´Ñ¡ Add to PATH:
     echo   https://www.python.org/downloads/
     goto :END
 )
 
-echo æ­£åœ¨å¯åŠ¨ Flask æœåŠ¡...
+echo ÕýÔÚÆô¶¯ Flask ·þÎñ...
 echo.
 python "%BASE%app.py"
 echo.
-echo Python app.py å·²é€€å‡ºã€‚è¿”å›žç : %errorlevel%
+echo Python app.py ÒÑÍË³ö¡£·µ»ØÂë: %errorlevel%
 
 :END
 echo.
-echo ===== çª—å£å·²ä¿ç•™ï¼Œå¯æ»šåŠ¨æŸ¥çœ‹ä¸Šæ–¹è¾“å‡º =====
-echo æŒ‰ä»»æ„é”®å…³é—­æœ¬çª—å£ã€‚
+echo ===== ´°¿ÚÒÑ±£Áô£¬¿É¹ö¶¯²é¿´ÉÏ·½Êä³ö =====
+echo °´ÈÎÒâ¼ü¹Ø±Õ±¾´°¿Ú¡£
 pause >nul
 endlocal
