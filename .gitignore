@@ -1,0 +1,24 @@
+# 敏感配置（含密码 hash、运行态）
+# 注：config.json 已脱敏（api_key 为空），作为分发模板需提交
+auth.json
+sessions.json
+batch_queue.json
+batch_queue.before-*.json
+
+# 运行时目录
+uploads/
+output/
+.dreamina_inputs/
+.thumb_cache/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 打包产物
+build/
+dist/
+*.spec.bak
+
+# IDE
+.vscode/
+.idea/

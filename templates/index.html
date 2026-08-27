@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyTool - 即梦批量生图</title>
+<style>
+:root {
+  --bg: #1a1a2e;
+  --panel: #16213e;
+  --accent: #0f3460;
+  --highlight: #e94560;
+  --text: #eee;
+  --text-dim: #888;
+  --border: #233;
+  --green: #4e9;
+  --red: #e55;
+  --radius: 8px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+
+/* 认证页 */
+#authPage { display: flex; align-items: center; justify-content: center; height: 100vh; }
+.auth-box { background: var(--panel); padding: 32px; border-radius: var(--radius); width: 320px; text-align: center; }
+.auth-box h1 { color: var(--highlight); margin-bottom: 8px; font-size: 20px; }
+.auth-box p { color: var(--text-dim); font-size: 13px; margin-bottom: 20px; }
+.auth-box input { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); font-size: 14px; }
+.auth-box button { width: 100%; padding: 10px; background: var(--highlight); border: none; border-radius: 4px; color: #fff; font-size: 14px; cursor: pointer; }
+.auth-box button:hover { opacity: 0.85; }
+.auth-error { color: var(--red); font-size: 12px; margin-top: 8px; min-height: 16px; }
+
+/* 主界面 */
+#mainApp { display: none; flex-direction: column; height: 100vh; }
+.topbar { display: flex; align-items: center; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--border); gap: 12px; }
+.topbar h1 { font-size: 16px; color: var(--highlight); }
+.topbar .spacer { flex: 1; }
+.topbar button { padding: 6px 14px; background: var(--accent); border: 1px solid var(--border); color: var(--text); border-radius: 4px; cursor: pointer; font-size: 13px; }
+.topbar button:hover { background: var(--highlight); }
+.topbar .credit { color: var(--green); font-size: 13px; }
+
+.content { display: flex; flex: 1; overflow: hidden; }
+.col { padding: 12px; overflow-y: auto; }
+.col-left { width: 300px; border-right: 1px solid var(--border); }
+.col-mid { flex: 1; }
+.col-right { width: 320px; border-left: 1px solid var(--border); }
+
+.section-title { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+
+/* 拖拽区 */
+.drop-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 24px; text-align: center; cursor: pointer; transition: border-color 0.2s; }
+.drop-zone:hover, .drop-zone.dragover { border-color: var(--highlight); }
+.drop-zone p { color: var(--text-dim); font-size: 13px; }
+.img-list { margin-top: 12px; }
+.img-item { display: flex; align-items: center; gap: 8px; padding: 6px; background: var(--panel); border-radius: 4px; margin-bottom: 6px; font-size: 12px; }
+.img-item .del { color: var(--red); cursor: pointer; margin-left: auto; }
+
+/* prompt 区 */
+.prompt-tools { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.prompt-tools input, .prompt-tools textarea { flex: 1; padding: 6px; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-size: 12px; }
+.prompt-tools button { padding: 6px 12px; background: var(--accent); border: 1px solid var(--border); color: var(--text); border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+.prompt-tools button:hover { background: var(--highlight); }
+.product-info { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+.product-info input { padding: 6px; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-size: 12px; }
+.prompt-list { margin-top: 8px; max-height: 300px; overflow-y: auto; }
+.prompt-item { display: flex; gap: 8px; padding: 6px; background: var(--panel); border-radius: 4px; margin-bottom: 4px; font-size: 12px; }
+.prompt-item textarea { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 4px; font-size: 12px; resize: vertical; min-height: 32px; }
+.prompt-item .del { color: var(--red); cursor: pointer; align-self: flex-start; }
+
+/* 进度区 */
+.progress-box { margin-bottom: 16px; }
+.progress-num { font-size: 28px; color: var(--highlight); text-align: center; margin: 8px 0; }
+.progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--green); width: 0; transition: width 0.3s; }
+.current-task { font-size: 12px; color: var(--text-dim); text-align: center; margin-top: 6px; min-height: 16px; }
+
+.log-box { font-size: 11px; max-height: 200px; overflow-y: auto; }
+.log-line { padding: 2px 4px; border-bottom: 1px solid var(--border); }
+.log-line .time { color: var(--text-dim); }
+.log-line.error .msg { color: var(--red); }
+.log-line.warn .msg { color: #fc0; }
+
+/* 输出区 */
+.output-head { display:flex; align-items:center; gap:8px; }
+.output-dir { flex:1; font-size:11px; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.btn-open-dir { padding:3px 10px; background:var(--accent); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer; font-size:11px; white-space:nowrap; }
+.btn-open-dir:hover { background:var(--highlight); }
+.output-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+.output-item { position: relative; }
+.output-item img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; cursor: pointer; }
+.output-item .name { display: none; }
+
+/* 设置弹窗 */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+.modal-overlay.show { display: flex; }
+.modal { background: var(--panel); padding: 24px; border-radius: var(--radius); width: 480px; max-height: 80vh; overflow-y: auto; }
+.modal h2 { color: var(--highlight); margin-bottom: 16px; font-size: 18px; }
+.modal label { display: block; font-size: 12px; color: var(--text-dim); margin: 8px 0 4px; }
+.modal input { width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-size: 13px; }
+.modal .hint { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+.modal .actions { display: flex; gap: 8px; margin-top: 20px; }
+.modal .actions button { flex: 1; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.btn-save { background: var(--highlight); color: #fff; }
+.btn-cancel { background: var(--accent); color: var(--text); border: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<!-- 认证页 -->
+<div id="authPage">
+  <div class="auth-box">
+    <h1>MyTool</h1>
+    <p id="authHint">拖拽式即梦 AI 批量生图</p>
+    <input type="password" id="authPwd" placeholder="输入密码" onkeydown="if(event.key==='Enter')doAuth()">
+    <button onclick="doAuth()" id="authBtn">设置密码</button>
+    <div class="auth-error" id="authErr"></div>
+  </div>
+</div>
+
+<!-- 主界面 -->
+<div id="mainApp">
+  <div class="topbar">
+    <h1>MyTool</h1>
+    <span class="credit" id="creditDisplay"></span>
+    <span class="spacer"></span>
+    <button onclick="openSettings()">设置</button>
+    <button onclick="doLogout()">登出</button>
+  </div>
+  <div class="content">
+    <!-- 左：源图片 -->
+    <div class="col col-left">
+      <div class="section-title">源图片</div>
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <p>拖拽图片到这里<br>或点击选择</p>
+      </div>
+      <input type="file" id="fileInput" multiple accept="image/*" style="display:none" onchange="handleFiles(this.files)">
+      <div class="img-list" id="imgList"></div>
+    </div>
+    <!-- 中：prompts + 输出 -->
+    <div class="col col-mid">
+      <div class="section-title">商品描述（随便写，让 AI 生成提示词）</div>
+      <textarea id="piDesc" placeholder="随便描述一下商品，比如：高端白酒，53度酱香型，500ml，老字号古法酿造，618大促价299元，包装红金配色..." style="width:100%;min-height:70px;padding:8px;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px;resize:vertical;font-family:inherit"></textarea>
+      <details style="margin-top:8px">
+        <summary style="font-size:12px;color:var(--text-dim);cursor:pointer">详细字段（可选，补充到描述里）</summary>
+        <div class="product-info" style="margin-top:6px">
+          <input id="piName" placeholder="商品名">
+          <input id="piPrice" placeholder="价格">
+          <input id="piSelling" placeholder="卖点">
+          <input id="piActivity" placeholder="活动">
+          <input id="piSpecs" placeholder="规格">
+          <input id="piLocked" placeholder="锁定文字">
+        </div>
+      </details>
+      <div class="prompt-tools">
+        <input type="number" id="promptCount" value="10" min="1" max="50" style="max-width:60px">
+        <button onclick="aiGenerate()">AI 生成 Prompts</button>
+        <button onclick="addPrompt()">+ 添加</button>
+        <button onclick="clearPrompts()">清空</button>
+      </div>
+      <div class="prompt-list" id="promptList"></div>
+      <div class="output-head" style="margin-top:16px">
+        <span class="section-title" style="margin:0">输出预览</span>
+        <span id="outputDirLabel" class="output-dir" title=""></span>
+        <button class="btn-open-dir" onclick="pickOutputFolder()">选择文件夹</button>
+        <button class="btn-open-dir" onclick="openOutputFolder()">打开文件夹</button>
+      </div>
+      <div class="output-grid" id="outputGrid"></div>
+    </div>
+    <!-- 右：进度 -->
+    <div class="col col-right">
+      <div class="section-title">进度</div>
+      <div class="progress-box">
+        <div class="progress-num" id="progressNum">0 / 0</div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="current-task" id="currentTask"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button style="flex:1;padding:8px;background:var(--highlight);border:none;border-radius:4px;color:#fff;cursor:pointer" onclick="startTask()">开始</button>
+        <button style="flex:1;padding:8px;background:var(--accent);border:1px solid var(--border);border-radius:4px;color:var(--text);cursor:pointer" onclick="stopTask()">停止</button>
+      </div>
+      <div class="section-title">日志</div>
+      <div class="log-box" id="logBox"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 设置弹窗 -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <h2>设置</h2>
+    <label>LLM Base URL（OpenAI 兼容）</label>
+    <input id="cfgBaseUrl" placeholder="https://api.deepseek.com">
+    <div class="hint">DeepSeek 官方 / 中转站 / 本地 ollama 等任何 OpenAI 兼容端点</div>
+    <label>API Key</label>
+    <input type="password" id="cfgApiKey" placeholder="sk-...（已配置显示***，留空保存=不改）">
+    <label>模型</label>
+    <input id="cfgModel" placeholder="deepseek-v4-pro">
+    <label>即梦 CLI 路径（留 auto 自动探测）</label>
+    <input id="cfgCliPath" placeholder="auto">
+    <div class="hint">填 auto 自动查找，或指定 dreamina.exe 完整路径</div>
+    <label>输出目录</label>
+    <input id="cfgOutputDir" placeholder="output">
+    <div class="actions">
+      <button class="btn-cancel" onclick="closeSettings()">取消</button>
+      <button class="btn-save" onclick="saveSettings()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let images = [];
+let prompts = [];
+let pollTimer = null;
+
+// ===== 认证 =====
+async function bootstrap() {
+  try {
+    const r = await fetch('/api/auth/status');
+    const d = await r.json();
+    if (!d.configured) {
+      document.getElementById('authHint').textContent = '首次使用，请设置本机密码（≥6位）';
+      document.getElementById('authBtn').textContent = '设置密码';
+    } else {
+      document.getElementById('authHint').textContent = '请输入密码登录';
+      document.getElementById('authBtn').textContent = '登录';
+    }
+  } catch(e) { document.getElementById('authErr').textContent = '连接失败: ' + e; }
+}
+
+async function doAuth() {
+  const pwd = document.getElementById('authPwd').value;
+  const r = await fetch('/api/auth/status');
+  const d = await r.json();
+  const endpoint = d.configured ? '/api/auth/login' : '/api/auth/setup';
+  const resp = await fetch(endpoint, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({password: pwd})
+  });
+  if (resp.ok) { showMain(); }
+  else {
+    const err = await resp.json();
+    document.getElementById('authErr').textContent = err.error || '失败';
+  }
+}
+
+async function doLogout() {
+  await fetch('/api/auth/logout', {method:'POST'});
+  location.reload();
+}
+
+// ===== 主界面 =====
+async function showMain() {
+  document.getElementById('authPage').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'flex';
+  await loadConfig();
+  startPolling();
+  loadOutputs();
+  checkCredit();
+}
+
+async function loadConfig() {
+  const r = await fetch('/api/config');
+  const d = await r.json();
+  document.getElementById('cfgBaseUrl').value = (d.llm && d.llm.base_url) || '';
+  document.getElementById('cfgApiKey').value = (d.llm && d.llm.api_key) || '';
+  document.getElementById('cfgModel').value = (d.llm && d.llm.model) || '';
+  document.getElementById('cfgCliPath').value = (d.image && d.image.cli_path) || 'auto';
+  document.getElementById('cfgOutputDir').value = d.output_dir || 'output';
+  // 恢复 prompts
+  if (d.prompts && d.prompts.length) {
+    prompts = d.prompts.slice();
+    renderPrompts();
+  }
+}
+
+// ===== 设置 =====
+function openSettings() { document.getElementById('settingsModal').classList.add('show'); }
+function closeSettings() { document.getElementById('settingsModal').classList.remove('show'); }
+
+async function saveSettings() {
+  const data = {
+    llm: {
+      base_url: document.getElementById('cfgBaseUrl').value.trim(),
+      api_key: document.getElementById('cfgApiKey').value.trim(),
+      model: document.getElementById('cfgModel').value.trim(),
+    },
+    image: { cli_path: document.getElementById('cfgCliPath').value.trim() || 'auto' },
+    output_dir: document.getElementById('cfgOutputDir').value.trim() || 'output',
+  };
+  const r = await fetch('/api/config', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(data)
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(()=>({}));
+    alert(d.error || '保存失败，请重新登录');
+    return;
+  }
+  closeSettings();
+  alert('设置已保存');
+}
+
+// ===== 图片拖拽 =====
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+
+async function handleFiles(files) {
+  for (const f of files) {
+    const fd = new FormData();
+    fd.append('file', f);
+    const r = await fetch('/api/upload', {method:'POST', body: fd});
+    const d = await r.json();
+    if (d.path) { images.push({path: d.path, name: d.name}); renderImages(); }
+  }
+}
+
+function renderImages() {
+  const list = document.getElementById('imgList');
+  list.innerHTML = images.map((img, i) =>
+    `<div class="img-item"><span>${img.name}</span><span class="del" onclick="delImage(${i})">x</span></div>`
+  ).join('');
+}
+
+function delImage(i) { images.splice(i, 1); renderImages(); }
+
+// ===== Prompts =====
+async function aiGenerate() {
+  try {
+    const product_info = {
+      description: document.getElementById('piDesc').value.trim(),
+      name: document.getElementById('piName').value.trim(),
+      price: document.getElementById('piPrice').value.trim(),
+      selling_points: document.getElementById('piSelling').value.trim(),
+      activity: document.getElementById('piActivity').value.trim(),
+      specs: document.getElementById('piSpecs').value.trim(),
+      locked_text: document.getElementById('piLocked').value.trim(),
+    };
+    const count = parseInt(document.getElementById('promptCount').value) || 10;
+    const r = await fetch('/api/ai-generate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({product_info, count})
+    });
+    const d = await r.json();
+    if (d.error) { alert(d.error); return; }
+    prompts = d.prompts || [];
+    renderPrompts();
+    if (d.is_local) alert('LLM 未配置，使用本地兜底风格。请在设置面板配置 API。');
+  } catch(e) { alert('AI 生成失败：' + e.message); }
+}
+
+function addPrompt() { prompts.push(''); renderPrompts(); }
+function clearPrompts() { prompts = []; renderPrompts(); }
+
+function renderPrompts() {
+  const list = document.getElementById('promptList');
+  list.innerHTML = prompts.map((p, i) =>
+    `<div class="prompt-item"><textarea oninput="prompts[${i}]=this.value">${p}</textarea><span class="del" onclick="delPrompt(${i})">x</span></div>`
+  ).join('');
+}
+
+function delPrompt(i) { prompts.splice(i, 1); renderPrompts(); }
+
+// ===== 任务 =====
+async function startTask() {
+  if (!images.length || !prompts.filter(p=>p.trim()).length) { alert('请添加图片和提示词'); return; }
+  const r = await fetch('/api/start', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      images: images.map(i=>({path:i.path, name:i.name})),
+      prompts: prompts.filter(p=>p.trim()),
+      ratio: '1:1'
+    })
+  });
+  const d = await r.json();
+  if (d.error) alert(d.error);
+}
+
+async function stopTask() { await fetch('/api/stop', {method:'POST'}); }
+
+// ===== 轮询 =====
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(pollState, 2000);
+  pollState();
+}
+
+async function pollState() {
+  try {
+    const r = await fetch('/api/state');
+    const d = await r.json();
+    document.getElementById('progressNum').textContent = `${d.done} / ${d.total}`;
+    document.getElementById('progressFill').style.width = d.total ? (d.done/d.total*100)+'%' : '0';
+    document.getElementById('currentTask').textContent = d.current || '';
+    // 日志
+    const logBox = document.getElementById('logBox');
+    logBox.innerHTML = (d.logs||[]).slice(-30).map(l =>
+      `<div class="log-line ${l.level||'info'}"><span class="time">${l.time}</span> <span class="msg">${l.msg}</span></div>`
+    ).join('');
+    logBox.scrollTop = logBox.scrollHeight;
+    // 运行中刷新输出；任务刚结束也刷一次
+    if (d.running) loadOutputs();
+    else if (window._lastRunning) loadOutputs();
+    window._lastRunning = d.running;
+  } catch(e) {}
+}
+
+async function loadOutputs() {
+  try {
+    const r = await fetch('/api/outputs');
+    const d = await r.json();
+    const dirLabel = document.getElementById('outputDirLabel');
+    if (dirLabel) { dirLabel.textContent = d.dir || ''; dirLabel.title = d.dir || ''; }
+    const grid = document.getElementById('outputGrid');
+    grid.innerHTML = (d.files||[]).slice(0, 30).map(f =>
+      `<div class="output-item" title="${f.name}"><img src="/api/output-file/${f.name}" loading="lazy"></div>`
+    ).join('');
+  } catch(e) {}
+}
+
+async function openOutputFolder() {
+  await fetch('/api/open-output', {method:'POST'});
+}
+
+async function pickOutputFolder() {
+  const r = await fetch('/api/pick-folder', {method:'POST'});
+  const d = await r.json();
+  if (d.path) { loadOutputs(); }
+}
+
+async function checkCredit() {
+  try {
+    const r = await fetch('/api/credit');
+    const d = await r.json();
+    if (d.total_credit !== undefined) {
+      document.getElementById('creditDisplay').textContent = `积分: ${d.total_credit}`;
+    }
+  } catch(e) {}
+}
+
+// 启动
+bootstrap();
+</script>
+</body>
+</html>
