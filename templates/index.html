@@ -185,6 +185,7 @@ body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--t
       </div>
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <button id="btnStart" style="flex:1;padding:8px;background:var(--highlight);border:none;border-radius:4px;color:#fff;cursor:pointer" onclick="startTask()">开始</button>
+        <button id="btnPause" style="flex:1;padding:8px;background:var(--accent);border:1px solid var(--border);border-radius:4px;color:var(--text);cursor:pointer" onclick="pauseTask()">暂停</button>
         <button style="flex:1;padding:8px;background:var(--accent);border:1px solid var(--border);border-radius:4px;color:var(--text);cursor:pointer" onclick="stopTask()">停止</button>
       </div>
       <div class="section-title">日志</div>
@@ -534,6 +535,32 @@ async function stopTask() {
   } catch(e) { alert('停止失败：' + e.message); }
 }
 
+async function pauseTask() {
+  const btn = document.getElementById('btnPause');
+  try {
+    const r = await fetch('/api/pause', {method:'POST'});
+    const d = await r.json();
+    if (d.error) { alert(d.error); return; }
+    btn.textContent = '继续';
+    btn.onclick = resumeTask;
+    btn.style.background = 'var(--highlight)';
+    btn.style.color = '#fff';
+  } catch(e) { alert('暂停失败：' + e.message); }
+}
+
+async function resumeTask() {
+  const btn = document.getElementById('btnPause');
+  try {
+    const r = await fetch('/api/resume', {method:'POST'});
+    const d = await r.json();
+    if (d.error) { alert(d.error); return; }
+    btn.textContent = '暂停';
+    btn.onclick = pauseTask;
+    btn.style.background = 'var(--accent)';
+    btn.style.color = 'var(--text)';
+  } catch(e) { alert('继续失败：' + e.message); }
+}
+
 // ===== 轮询 =====
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
@@ -561,10 +588,36 @@ async function pollState() {
       // 任务刚结束
       loadOutputs();
       resetStartBtn();
+      resetPauseBtn();
       document.getElementById('currentTask').textContent = '✅ 任务完成';
     }
     window._lastRunning = d.running;
+    // 同步暂停按钮状态（被后端状态纠正）
+    if (d.running) {
+      const pbtn = document.getElementById('btnPause');
+      const isPausedView = pbtn.textContent === '继续';
+      if (d.paused && !isPausedView) {
+        pbtn.textContent = '继续';
+        pbtn.onclick = resumeTask;
+        pbtn.style.background = 'var(--highlight)';
+        pbtn.style.color = '#fff';
+      } else if (!d.paused && isPausedView) {
+        pbtn.textContent = '暂停';
+        pbtn.onclick = pauseTask;
+        pbtn.style.background = 'var(--accent)';
+        pbtn.style.color = 'var(--text)';
+      }
+    }
   } catch(e) {}
+}
+
+function resetPauseBtn() {
+  const btn = document.getElementById('btnPause');
+  if (!btn) return;
+  btn.textContent = '暂停';
+  btn.onclick = pauseTask;
+  btn.style.background = 'var(--accent)';
+  btn.style.color = 'var(--text)';
 }
 
 async function loadOutputs() {

@@ -31,6 +31,7 @@ CORS(app)
 # 全局状态（线程间读写，依赖 GIL 保证安全）
 state = {
     "running": False,
+    "paused": False,
     "total": 0,
     "done": 0,
     "current": "",
@@ -179,7 +180,28 @@ def start():
 @app.route("/api/stop", methods=["POST"])
 def stop():
     state["running"] = False
+    state["paused"] = False
     add_log("已请求停止，当前任务完成后将终止", "warn")
+    return jsonify({"success": True})
+
+
+@app.route("/api/pause", methods=["POST"])
+def pause():
+    if not state["running"]:
+        return jsonify({"error": "任务未运行"}), 400
+    state["paused"] = True
+    add_log("已暂停，等待继续", "warn")
+    return jsonify({"success": True})
+
+
+@app.route("/api/resume", methods=["POST"])
+def resume():
+    if not state["running"]:
+        return jsonify({"error": "任务未运行"}), 400
+    if not state["paused"]:
+        return jsonify({"error": "任务未暂停"}), 400
+    state["paused"] = False
+    add_log("已继续", "info")
     return jsonify({"success": True})
 
 
@@ -195,6 +217,9 @@ def process_task(images, prompts, output_dir, ratio, cli_path):
     def _canceled():
         return not state["running"]
 
+    def _paused():
+        return state.get("paused", False)
+
     n = 0
     for img in images:
         if _canceled():
@@ -202,6 +227,10 @@ def process_task(images, prompts, output_dir, ratio, cli_path):
         img_path = img.get("path", "")
         img_name = Path(img.get("name", "image")).stem
         for pi, prompt in enumerate(prompts):
+            # 暂停等待
+            while _paused() and not _canceled():
+                state["current"] = f"[{n}/{state['total']}] 已暂停 - {img_name} x P{pi + 1}"
+                time.sleep(1)
             if _canceled():
                 break
             n += 1
@@ -213,6 +242,9 @@ def process_task(images, prompts, output_dir, ratio, cli_path):
                     img_path, prompt, ratio, cli_path,
                     cancel_flag=_canceled,
                 )
+                # 生成完成后也检查暂停（暂停时不下载，等继续）
+                while _paused() and not _canceled():
+                    time.sleep(1)
                 if _canceled():
                     add_log("已停止", "warn")
                     break
@@ -235,6 +267,7 @@ def process_task(images, prompts, output_dir, ratio, cli_path):
             time.sleep(2)
 
     state["running"] = False
+    state["paused"] = False
     state["current"] = ""
     add_log(f"任务结束：完成 {state['done']}/{state['total']}")
 
