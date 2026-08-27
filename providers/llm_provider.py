@@ -5,8 +5,7 @@ import re
 
 import requests
 
-# 15 种换背景材质/光影模板（只换背景质感，不换场景类型）
-# 核心：场景类型（厨房/居家/影棚/户外）保持不变，只换背景的材质/光影/氛围
+# 15 种换背景材质/光影模板
 LOCAL_STYLES = [
     "精致纯色背景，柔光，突出商品",
     "渐变背景，柔和侧光，氛围感强",
@@ -25,10 +24,18 @@ LOCAL_STYLES = [
     "画布纹理背景，艺术感",
 ]
 
-# system prompt：换背景材质，不换场景类型
+# 一致性选项到中文描述的映射
+_CONSIST_MAP = {
+    "scene": "保持原场景类型不变",
+    "style": "保持原图风格不变",
+    "color": "保持原图色调不变",
+    "layout": "保持原图构图不变",
+}
+
+# system prompt 模板，{count} 和 {consistency_clause} 动态填充
 SYSTEM_PROMPT = """你是电商商品图图生图提示词专家。根据用户给的需求，生成 N 条换背景提示词。
 
-核心原则：这是图生图，模型能看到原图。只更换背景的材质/光影/氛围，绝不改变原图的场景类型（如厨房、居家、影棚、户外等）。
+核心原则：这是图生图，模型能看到原图。核心是更换背景的材质/光影/氛围，同时根据用户勾选的一致性选项决定哪些必须保持不变。
 
 规则：
 1. 用户填写的需求是唯一商品语义来源，不得引用或推测任何历史商品资料
@@ -38,18 +45,38 @@ SYSTEM_PROMPT = """你是电商商品图图生图提示词专家。根据用户�
 5. 每条 ≤100 字，描述一种背景材质/光影效果
 6. 只输出 JSON 字符串数组，不要 Markdown、编号、解释
 7. 恰好生成 {count} 条
-8. 每条必须同时包含"保持原场景类型不变"和"保持原图色调与风格不变"
-9. 10 条分别描写不同的背景材质/光影（纯色/渐变/纹理/丝绸/金属等），但场景类型必须与原图一致
-10. 严禁指定新的场景类型（如"自然场景""户外场景""厨房场景"），因为场景由原图决定
-11. 不要在提示词中指定具体颜色（如"红色""绿色"），色调由模型从原图自动继承"""
+8. {consistency_clause}
+9. 10 条分别描写不同的背景材质/光影（纯色/渐变/纹理/丝绸/金属等）
+10. 严禁指定与一致性选项冲突的新场景或色调（如勾了场景一致性就不能写"自然场景""户外场景"）"""
 
-# 保护文字：换背景材质，不换场景类型和风格
-PROTECTION_TEXT = (
-    "更换背景的材质/光影/氛围，但保持原场景类型不变，"
-    "保持原图的色调与风格不变，不改变产品主体与包装文字，"
-    "不增加多余文字，不修改品牌、价格、规格和关键卖点，"
-    "保持商品比例与真实质感"
+# 保护文字模板
+PROTECTION_TEMPLATE = (
+    "更换背景的材质/光影/氛围，{consistency_text}，"
+    "不改变产品主体与包装文字，不增加多余文字，"
+    "不修改品牌、价格、规格和关键卖点，保持商品比例与真实质感"
 )
+
+
+def _build_consistency_clause(consistency: dict) -> str:
+    """根据一致性选项，生成 SYSTEM_PROMPT 第 8 条的约束描述。"""
+    items = []
+    for k, label in _CONSIST_MAP.items():
+        if consistency.get(k):
+            items.append(label)
+    if not items:
+        return "每条只需描述换什么背景材质/光影，无需保持任何原图属性。"
+    return f"每条必须包含：{'、'.join(items)}。"
+
+
+def _build_consistency_text(consistency: dict) -> str:
+    """根据一致性选项，生成 PROTECTION_TEXT 的中间部分。"""
+    items = []
+    for k, label in _CONSIST_MAP.items():
+        if consistency.get(k):
+            items.append(label)
+    if not items:
+        return "灵活调整一切"
+    return "、".join(items)
 
 
 def generate(product_info: dict, count: int, llm_cfg: dict) -> list[str]:
@@ -73,7 +100,12 @@ def generate(product_info: dict, count: int, llm_cfg: dict) -> list[str]:
 
 def _call_api(product_info, count, base_url, api_key, model, temperature) -> list:
     """调 OpenAI 兼容 /chat/completions。"""
+    consistency = product_info.get("consistency") or {}
     user_msg = _build_user_msg(product_info, count)
+    sys_content = SYSTEM_PROMPT.format(
+        count=count,
+        consistency_clause=_build_consistency_clause(consistency),
+    )
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
@@ -81,7 +113,7 @@ def _call_api(product_info, count, base_url, api_key, model, temperature) -> lis
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT.format(count=count)},
+            {"role": "system", "content": sys_content},
             {"role": "user", "content": user_msg},
         ],
         "temperature": temperature,
@@ -104,13 +136,27 @@ def _call_api(product_info, count, base_url, api_key, model, temperature) -> lis
 def _build_user_msg(product_info: dict, count: int) -> str:
     """构造用户消息：优先用自由描述，没有则用结构化字段。"""
     desc = (product_info.get("description") or "").strip()
+    consistency = product_info.get("consistency") or {}
+    protection_text = PROTECTION_TEMPLATE.format(
+        consistency_text=_build_consistency_text(consistency)
+    )
     locked = product_info.get("locked_text", "")
-    protect = PROTECTION_TEXT + (f"，必须保留:{locked}" if locked else "")
+    protect = protection_text + (f"，必须保留:{locked}" if locked else "")
+    consist_items = []
+    for k, label in _CONSIST_MAP.items():
+        if consistency.get(k):
+            consist_items.append(label)
+    consist_clause = (
+        f'每条包含：{"、".join(consist_items)}。'
+        if consist_items
+        else "每条只需描述换什么背景材质/光影。"
+    )
     if desc:
         return (
             f"用户描述：{desc}\n"
             f"保护文字：{protect}\n"
-            f'请根据以上描述生成 {count} 条换背景提示词，每条描述不同背景材质/光影，都必须同时包含"保持原场景类型不变"和"保持原图色调与风格不变"。'
+            f"一致性要求：{consist_clause}\n"
+            f"请根据以上描述生成 {count} 条换背景提示词，每条描述不同背景材质/光影。"
         )
     parts = []
     for k in ["name", "selling_points", "price", "activity", "specs"]:
@@ -121,7 +167,8 @@ def _build_user_msg(product_info: dict, count: int) -> str:
     return (
         f"商品信息：{info}\n"
         f"保护文字：{protect}\n"
-        f'请生成 {count} 条换背景提示词，每条描述不同背景材质/光影，都必须同时包含"保持原场景类型不变"和"保持原图色调与风格不变"。'
+        f"一致性要求：{consist_clause}\n"
+        f"请生成 {count} 条换背景提示词，每条描述不同背景材质/光影。"
     )
 
 
@@ -138,8 +185,12 @@ def _extract_json_array(text: str) -> list:
 
 
 def generate_local(product_info: dict, count: int) -> list:
-    """本地兜底：15 种换背景场景循环 + 商品调性拼接。优先用自由描述。"""
+    """本地兜底：15 种背景材质循环 + 一致性选项拼接。"""
     desc = (product_info.get("description") or "").strip()
+    consistency = product_info.get("consistency") or {}
+    protection_text = PROTECTION_TEMPLATE.format(
+        consistency_text=_build_consistency_text(consistency)
+    )
     if desc:
         info = desc[:60]
     else:
@@ -150,12 +201,18 @@ def generate_local(product_info: dict, count: int) -> list:
                 parts.append(f"{k}: {v}")
         info = "，".join(parts) if parts else "原产品"
     locked = product_info.get("locked_text", "")
-    protect = PROTECTION_TEXT + (f"，必须保留:{locked}" if locked else "")
+    protect = protection_text + (f"，必须保留:{locked}" if locked else "")
+
+    consist_items = []
+    for k, label in _CONSIST_MAP.items():
+        if consistency.get(k):
+            consist_items.append(label)
+    consist_text = "、".join(consist_items) if consist_items else "灵活调整一切"
 
     result = []
     for i in range(count):
         scene = LOCAL_STYLES[i % len(LOCAL_STYLES)]
-        p = f"换背景材质为{scene}，保持原场景类型不变，保持原图色调与风格不变，方案{i + 1:02d}，电商商品卡，1:1比例，{protect}。"
+        p = f"换背景材质为{scene}，{consist_text}，方案{i + 1:02d}，电商商品卡，1:1比例，{protect}。"
         result.append(p)
     return result
 

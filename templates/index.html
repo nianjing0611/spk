@@ -158,6 +158,13 @@ body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--t
         <button onclick="addPrompt()">+ 添加</button>
         <button onclick="clearPrompts()">清空</button>
       </div>
+      <div style="margin-top:6px;font-size:12px;color:var(--text-dim)">
+        一致性选项（换背景时保持哪些不变）：
+        <label style="margin-left:8px"><input type="checkbox" id="optScene" checked onchange="syncConsistency()"> 场景一致性</label>
+        <label style="margin-left:8px"><input type="checkbox" id="optStyle" checked onchange="syncConsistency()"> 风格一致性</label>
+        <label style="margin-left:8px"><input type="checkbox" id="optColor" checked onchange="syncConsistency()"> 色调一致性</label>
+        <label style="margin-left:8px"><input type="checkbox" id="optLayout" onchange="syncConsistency()"> 构图一致性</label>
+      </div>
       <div class="prompt-list" id="promptList"></div>
       <div class="output-head" style="margin-top:16px">
         <span class="section-title" style="margin:0">输出预览</span>
@@ -373,6 +380,24 @@ function renderImages() {
 
 function delImage(i) { images.splice(i, 1); renderImages(); }
 
+// ===== 一致性选项 =====
+function syncConsistency() {
+  const p = document.getElementById('piDesc');
+  const hints = [];
+  if (document.getElementById('optScene').checked) hints.push('场景');
+  if (document.getElementById('optStyle').checked) hints.push('风格');
+  if (document.getElementById('optColor').checked) hints.push('色调');
+  if (document.getElementById('optLayout').checked) hints.push('构图');
+  // 实时反馈
+  let tip = hints.length ? `换背景 + 保持${hints.join('/')}一致` : '仅换背景（不保留任何一致性）';
+  document.getElementById('consistencyTip')?.remove();
+  const el = document.createElement('span');
+  el.id = 'consistencyTip';
+  el.style.cssText = 'font-size:11px;color:var(--green);margin-left:6px';
+  el.textContent = tip;
+  p.parentNode.insertBefore(el, p.nextSibling);
+}
+
 // ===== Prompts =====
 async function aiGenerate() {
   try {
@@ -384,6 +409,12 @@ async function aiGenerate() {
       activity: document.getElementById('piActivity').value.trim(),
       specs: document.getElementById('piSpecs').value.trim(),
       locked_text: document.getElementById('piLocked').value.trim(),
+      consistency: {
+        scene: document.getElementById('optScene').checked,
+        style: document.getElementById('optStyle').checked,
+        color: document.getElementById('optColor').checked,
+        layout: document.getElementById('optLayout').checked,
+      },
     };
     const count = parseInt(document.getElementById('promptCount').value) || 10;
     const r = await fetch('/api/ai-generate', {
