@@ -124,6 +124,7 @@ body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--t
     <span class="credit" id="creditDisplay"></span>
     <span class="spacer"></span>
     <button onclick="openSettings()">设置</button>
+    <button onclick="checkUpdate()">检查更新</button>
     <button onclick="doLogout()">登出</button>
   </div>
   <div class="content">
@@ -203,6 +204,19 @@ body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--t
     <div class="actions">
       <button class="btn-cancel" onclick="closeSettings()">取消</button>
       <button class="btn-save" onclick="saveSettings()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 更新弹窗 -->
+<div class="modal-overlay" id="updateModal">
+  <div class="modal">
+    <h2>检查更新</h2>
+    <div id="updateContent" style="text-align:center;padding:12px 0">
+      <p style="color:var(--text-dim)">正在检查...</p>
+    </div>
+    <div class="actions">
+      <button class="btn-cancel" onclick="closeUpdate()">关闭</button>
     </div>
   </div>
 </div>
@@ -298,6 +312,40 @@ async function saveSettings() {
   }
   closeSettings();
   alert('设置已保存');
+}
+
+// ===== 检查更新 =====
+function closeUpdate() { document.getElementById('updateModal').classList.remove('show'); }
+
+async function checkUpdate() {
+  document.getElementById('updateContent').innerHTML = '<p style="color:var(--text-dim)">正在检查...</p>';
+  document.getElementById('updateModal').classList.add('show');
+  try {
+    const r = await fetch('/api/check-update');
+    const d = await r.json();
+    if (d.error) {
+      document.getElementById('updateContent').innerHTML =
+        `<p style="color:var(--red)">${d.error}</p>`;
+      return;
+    }
+    const el = document.getElementById('updateContent');
+    if (d.has_update) {
+      el.innerHTML = `
+        <p style="font-size:15px;color:var(--green)">发现新版本！</p>
+        <p style="margin:8px 0">当前 v${d.current} → 最新 v${d.latest}</p>
+        ${d.notes ? `<div style="text-align:left;background:var(--bg);padding:10px;border-radius:4px;margin:8px 0;white-space:pre-wrap;font-size:12px;max-height:180px;overflow:auto">${d.notes}</div>` : ''}
+        <a href="${d.release_url}" target="_blank" style="color:var(--highlight);font-size:14px">前往 GitHub 下载 →</a>
+      `;
+    } else {
+      el.innerHTML = `
+        <p style="font-size:15px;color:var(--green)">已是最新版本</p>
+        <p style="color:var(--text-dim)">当前 v${d.current}</p>
+      `;
+    }
+  } catch (e) {
+    document.getElementById('updateContent').innerHTML =
+      '<p style="color:var(--red)">检查失败：网络错误</p>';
+  }
 }
 
 // ===== 图片拖拽 =====

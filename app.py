@@ -3,11 +3,14 @@
 MVP 阶段：同步调用即梦 CLI（--poll=180），双层循环 图片×prompts。
 """
 import os
+import re
 import threading
 import time
 import urllib.request
 from datetime import datetime
 from pathlib import Path
+
+import requests
 
 from flask import Flask, request, jsonify, make_response, send_from_directory
 from flask_cors import CORS
@@ -334,6 +337,76 @@ def output_file(name):
 @app.route("/api/version")
 def version():
     return jsonify(get_version_info())
+
+
+@app.route("/api/check-update")
+def check_update():
+    """检查 GitHub 是否有新版本（查 latest release，无则回退最新 tag）。"""
+    vi = get_version_info()
+    repo = (vi.get("release_repo") or "").strip()
+    if not repo:
+        return jsonify({"error": "未配置 release_repo，无法检查更新"}), 400
+    headers = {"Accept": "application/vnd.github+json"}
+    latest, url, notes = _query_github_release(repo, headers)
+    if latest is None:
+        return jsonify({"error": "无法获取远程版本（仓库可能还没有 release/tag）"}), 502
+    current = vi.get("version", "0.0.0")
+    has_update = _compare_versions(latest, current) > 0
+    return jsonify({
+        "has_update": has_update,
+        "current": current,
+        "latest": latest,
+        "release_url": url,
+        "notes": notes,
+    })
+
+
+def _query_github_release(repo, headers):
+    """查 GitHub latest release；无 release 则取最新 tag。返回 (version, url, notes)。"""
+    try:
+        r = requests.get(
+            f"https://api.github.com/repos/{repo}/releases/latest",
+            headers=headers, timeout=15,
+        )
+        if r.status_code == 200:
+            d = r.json()
+            return (
+                (d.get("tag_name") or "").lstrip("v"),
+                d.get("html_url", ""),
+                (d.get("body") or "")[:500],
+            )
+    except Exception:
+        pass
+    # 回退：查 tags
+    try:
+        r = requests.get(
+            f"https://api.github.com/repos/{repo}/tags",
+            headers=headers, timeout=15,
+        )
+        if r.status_code == 200 and r.json():
+            t = r.json()[0]
+            return (
+                (t.get("name") or "").lstrip("v"),
+                f"https://github.com/{repo}/releases",
+                "",
+            )
+    except Exception:
+        pass
+    return None, "", ""
+
+
+def _compare_versions(a, b):
+    """语义化版本比较：a>b→1, a<b→-1, 相等→0。"""
+    pa = [int(x) for x in re.findall(r"\d+", a)]
+    pb = [int(x) for x in re.findall(r"\d+", b)]
+    for i in range(max(len(pa), len(pb))):
+        x = pa[i] if i < len(pa) else 0
+        y = pb[i] if i < len(pb) else 0
+        if x > y:
+            return 1
+        if x < y:
+            return -1
+    return 0
 
 
 def main():
