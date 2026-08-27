@@ -1,5 +1,5 @@
-# 敏感配置（含密码 hash、运行态）
-# 注：config.json 已脱敏（api_key 为空），作为分发模板需提交
+# 敏感配置（含密码 hash、运行态、用户填入的 api_key）
+config.json
 auth.json
 sessions.json
 batch_queue.json

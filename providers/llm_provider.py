@@ -76,13 +76,16 @@ def _call_api(product_info, count, base_url, api_key, model, temperature) -> lis
             {"role": "user", "content": user_msg},
         ],
         "temperature": temperature,
-        "max_tokens": min(8000, max(2000, count * 180)),
+        "max_tokens": min(8192, max(4096, count * 300)),
     }
     r = requests.post(
-        f"{base_url}/chat/completions", headers=headers, json=payload, timeout=60
+        f"{base_url}/chat/completions", headers=headers, json=payload, timeout=90
     )
     r.raise_for_status()
-    content = r.json()["choices"][0]["message"]["content"]
+    msg = r.json()["choices"][0]["message"]
+    content = msg.get("content") or ""
+    if not content:
+        content = msg.get("reasoning_content") or ""
     prompts = _extract_json_array(content)
     if not prompts:
         raise ValueError(f"响应解析失败: {content[:200]}")

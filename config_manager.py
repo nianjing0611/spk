@@ -26,9 +26,9 @@ DEFAULT_CONFIG = {
         "query_timeout": 1200,
     },
     "llm": {
-        "base_url": "",
+        "base_url": "https://api.deepseek.com",
         "api_key": "",
-        "model": "",
+        "model": "deepseek-v4-pro",
         "temperature": 0.2,
     },
     "output_dir": "output",
