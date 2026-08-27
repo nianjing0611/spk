@@ -179,11 +179,12 @@ def start():
 @app.route("/api/stop", methods=["POST"])
 def stop():
     state["running"] = False
+    add_log("已请求停止，当前任务完成后将终止", "warn")
     return jsonify({"success": True})
 
 
 def process_task(images, prompts, output_dir, ratio, cli_path):
-    """批量生成：双层循环 图片 × prompts（MVP 同步模式）。"""
+    """批量生成：双层循环 图片 × prompts（可中断模式）。"""
     state["running"] = True
     state["total"] = len(images) * len(prompts)
     state["done"] = 0
@@ -191,21 +192,30 @@ def process_task(images, prompts, output_dir, ratio, cli_path):
     state["ratio"] = ratio
     add_log(f"开始任务：{len(images)} 图 × {len(prompts)} prompt = {state['total']} 个")
 
+    def _canceled():
+        return not state["running"]
+
     n = 0
     for img in images:
-        if not state["running"]:
+        if _canceled():
             break
         img_path = img.get("path", "")
         img_name = Path(img.get("name", "image")).stem
         for pi, prompt in enumerate(prompts):
-            if not state["running"]:
+            if _canceled():
                 break
             n += 1
             state["current"] = f"[{n}/{state['total']}] {img_name} x P{pi + 1}"
             add_log(f"生成: {img_name} x P{pi + 1}")
 
             try:
-                result = image_provider.run_sync(img_path, prompt, ratio, cli_path)
+                result = image_provider.run_sync(
+                    img_path, prompt, ratio, cli_path,
+                    cancel_flag=_canceled,
+                )
+                if _canceled():
+                    add_log("已停止", "warn")
+                    break
                 status = result.get("gen_status")
                 if status == "success":
                     url = image_provider.extract_image_url(result)

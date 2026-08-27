@@ -1,13 +1,14 @@
 """即梦 CLI 封装：通过 dreamina.exe 调用即梦图生图接口。
 
 支持两种模式：
-- run_sync：同步阻塞（--poll=180），MVP 阶段用
-- submit + query：异步分离（--poll=0 + 独立轮询），稳定版用
+- run_sync：可中断同步（submit + 轮询，每轮检查 cancel_flag）
+- submit + query：异步分离（--poll=0 + 独立轮询）
 """
 import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 from shutil import which
 
@@ -128,32 +129,49 @@ def run_sync(
     ratio: str = "1:1",
     cli_path: str = "auto",
     timeout: int = 300,
+    cancel_flag=None,
 ) -> dict:
-    """同步图生图（--poll=180 阻塞等待，MVP 阶段用）。
+    """可中断同步图生图：submit 提交 + 轮询 query 结果。
 
-    内部调 submit + 循环 query，统一返回格式。
+    cancel_flag: callable，返回 bool。返回 True 时立即停止轮询。
+    每轮轮询检查一次，确保停止响应及时。
     """
     exe = find_dreamina(cli_path)
     if not exe:
         return {"gen_status": "fail", "fail_reason": "dreamina.exe 未找到"}
-    cmd = [
+
+    # 1. 提交任务（--poll=0，立即返回 submit_id）
+    submit_args = [
         exe, "image2image",
         f"--images={image_path}",
         f"--prompt={prompt}",
         f"--ratio={ratio}",
-        "--poll=180",
+        "--poll=0",
     ]
-    try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True,
-            timeout=timeout, encoding="utf-8", errors="ignore",
-            stdin=subprocess.DEVNULL,
-        )
-    except subprocess.TimeoutExpired:
-        return {"gen_status": "fail", "fail_reason": "CLI 超时（5 分钟）"}
-    except FileNotFoundError:
-        return {"gen_status": "fail", "fail_reason": "dreamina.exe 未找到"}
-    return _parse_output(result.stdout or "", result.stderr or "")
+    submit_result = _run_dreamina(submit_args, timeout=60)
+    submit_id = submit_result.get("submit_id")
+    if not submit_id:
+        return submit_result  # 提交失败，直接返回
+
+    # 2. 轮询结果
+    start = time.time()
+    poll_interval = 5  # 每 5 秒轮询一次
+    while time.time() - start < timeout:
+        if cancel_flag and cancel_flag():
+            return {"gen_status": "fail", "fail_reason": "已停止"}
+
+        query_args = [exe, "query_result", f"--submit_id={submit_id}"]
+        qr = _run_dreamina(query_args, timeout=30)
+        status = qr.get("gen_status", "")
+
+        if status == "success":
+            return qr
+        if status in ("fail", "error"):
+            return qr
+
+        time.sleep(poll_interval)
+
+    return {"gen_status": "fail", "fail_reason": f"轮询超时（{timeout}s）"}
 
 
 def list_remote(cli_path: str = "auto", limit: int = 100) -> dict:

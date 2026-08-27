@@ -456,7 +456,13 @@ async function startTask() {
   if (d.error) alert(d.error);
 }
 
-async function stopTask() { await fetch('/api/stop', {method:'POST'}); }
+async function stopTask() {
+  try {
+    const r = await fetch('/api/stop', {method:'POST'});
+    const d = await r.json();
+    if (d.success) alert('已请求停止，正在执行的任务完成后会终止');
+  } catch(e) { alert('停止失败：' + e.message); }
+}
 
 // ===== 轮询 =====
 function startPolling() {
