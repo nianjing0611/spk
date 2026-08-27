@@ -10,7 +10,7 @@
   "llm": {
     "base_url": "https://api.deepseek.com",
     "api_key": "",
-    "model": "deepseek-v4-pro",
+    "model": "deepseek-chat",
     "temperature": 0.2
   },
   "output_dir": "output",

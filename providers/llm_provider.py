@@ -55,16 +55,16 @@ _CONSIST_MAP = {
 }
 
 # system prompt：识别原图类别 → 换同类别全新背景（一致性逻辑全在这里，每条 prompt 不重复）
-SYSTEM_PROMPT = """你是电商商品图图生图提示词专家。根据用户指令，生成 N 条换背景的提示词。
+SYSTEM_PROMPT = """你是电商商品图图生图提示词专家。根据用户指令，生成 {count} 条换背景的提示词。
 
-核心：这是图生图，模型能看到原图。识别原图的场景类别、风格、色调，生成 N 条换背景提示词。每条以"换背景为"开头，写一个全新的背景场景。
+核心：这是图生图，模型能看到原图。识别原图的场景类别、风格、色调，生成 {count} 条换背景提示词。每条以"换背景为"开头，写一个全新的背景场景。
 
 规则：
 1. 每条 ≤50 字，以"换背景为"开头
 2. 只输出 JSON 字符串数组，不要 Markdown、编号、解释
 3. 恰好生成 {count} 条
 4. {consistency_clause}
-5. 10 条必须是完全不同的背景场景
+5. {count} 条必须是完全不同的背景场景
 6. 不改变产品主体、包装文字、品牌、价格、规格"""
 
 
@@ -145,13 +145,13 @@ def _call_api(product_info, count, base_url, api_key, model, temperature) -> lis
 
 
 def _build_user_msg(product_info: dict, count: int) -> str:
-    """构造用户消息：简洁，指令为主，商品字段可选。"""
+    """构造用户消息：核心指令放 user message，防止 v4-pro 忽略 system prompt。"""
     desc = (product_info.get("description") or "").strip()
     consistency = product_info.get("consistency") or {}
     consist_suffix = _build_consistency_suffix(consistency)
     locked = product_info.get("locked_text", "")
 
-    # 可选商品字段：有就带上，没有也行
+    # 可选商品字段
     product_parts = []
     for k, label in [("name", "商品名"), ("selling_points", "卖点"),
                       ("price", "价格"), ("activity", "活动"), ("specs", "规格")]:
@@ -162,14 +162,21 @@ def _build_user_msg(product_info: dict, count: int) -> str:
 
     instruction = desc if desc else "仅更换背景"
 
-    parts = [f"指令：{instruction}"]
-    if product_text:
-        parts.append(f"商品：{product_text}")
-    if locked:
-        parts.append(f"必须保留：{locked}")
-    parts.append(f'生成 {count} 条换背景提示词，每条以"换背景为"开头，末尾加"{consist_suffix}"。')
+    # 核心指令放 user message，防止 v4-pro 忽略 system prompt
+    core_rules = f"""【重要】你是图生图提示词专家。必须遵守以下规则：
+1. 生成 {count} 条换背景提示词，每条以"换背景为"开头
+2. 只输出 JSON 字符串数组
+3. {consist_suffix and '每条末尾加"' + consist_suffix + '"'}
+4. 不改变产品主体、包装文字、品牌、价格、规格
 
-    return "\n".join(parts)
+指令：{instruction}"""
+
+    if product_text:
+        core_rules += f"\n商品：{product_text}"
+    if locked:
+        core_rules += f"\n必须保留：{locked}"
+
+    return core_rules
 
 
 def _extract_json_array(text: str) -> list:
