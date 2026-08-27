@@ -24,6 +24,7 @@ DEFAULT_CONFIG = {
         "resolution_type": "2k",
         "poll_interval": 10,
         "query_timeout": 1200,
+        "max_concurrency": 4,
     },
     "llm": {
         "base_url": "https://api.deepseek.com",

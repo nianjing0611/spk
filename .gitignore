@@ -9,11 +9,17 @@ batch_queue.before-*.json
 # 运行时目录
 uploads/
 output/
+_updates/
 .dreamina_inputs/
 .thumb_cache/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# 自动更新跨重启标记
+.update_pending.json
+.update_pending.json.*
+_backup_before_v*/
 
 # 打包产物
 build/

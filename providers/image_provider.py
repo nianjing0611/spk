@@ -130,6 +130,8 @@ def run_sync(
     cli_path: str = "auto",
     timeout: int = 300,
     cancel_flag=None,
+    model_version: str = "5.0",
+    resolution_type: str = "2k",
 ) -> dict:
     """可中断同步图生图：submit 提交 + 轮询 query 结果。
 
@@ -148,6 +150,10 @@ def run_sync(
         f"--ratio={ratio}",
         "--poll=0",
     ]
+    if model_version:
+        submit_args.append(f"--model_version={model_version}")
+    if resolution_type:
+        submit_args.append(f"--resolution_type={resolution_type}")
     submit_result = _run_dreamina(submit_args, timeout=60)
     submit_id = submit_result.get("submit_id")
     if not submit_id:
