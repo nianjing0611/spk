@@ -1,46 +1,52 @@
 @echo off
-setlocal enabledelayedexpansion
-chcp 65001 >nul
+if "%~1"=="" (
+    start "MyTool" cmd /k ""%~f0" _inner_run_"
+    exit /b
+)
+if "%~1"=="_inner_run_" shift
 
-REM ==== 兼容中文路径：用完整路径，不依赖 cd ====
+setlocal
 set "BASE=%~dp0"
 
 echo ============================================
 echo   启动 MyTool 服务
 echo   启动后浏览器访问 http://127.0.0.1:9527/
 echo ============================================
-echo.
 echo 当前目录: %BASE%
 echo.
 
-REM 切换到 bat 所在目录（兼容短路径方式）
-pushd "%BASE%"
+if not exist "%BASE%app.py" (
+    echo [错误] 未找到 app.py
+    echo 请确认分发包完整，或移动到纯英文目录重试。
+    goto :END
+)
 
-REM 首次运行：从模板创建 config.json
-if not exist config.json (
-    if exist config.example.json (
-        copy config.example.json config.json >nul
-        echo [首次运行] 已从模板创建 config.json
-        echo 请编辑 config.json 填入你的 DeepSeek API Key，或通过网页设置页填写。
+if not exist "%BASE%config.json" (
+    if exist "%BASE%config.example.json" (
+        copy "%BASE%config.example.json" "%BASE%config.json" >nul
+        echo [首次运行] 已从 config.example.json 复制 config.json
+        echo 请在网页设置中填入 DeepSeek API Key。
         echo.
     )
 )
 
-REM 检查 Python
 where python >nul 2>nul
 if %errorlevel% neq 0 (
     echo [错误] 未检测到 Python。
-    echo 请先运行"安装依赖.bat"，或从 https://www.python.org 下载安装 Python 3.10+
-    echo.
-    pause
-    popd
-    exit /b 1
+    echo 请先运行"安装依赖.bat"，或下载 Python 3.10+ 并勾选 Add to PATH:
+    echo   https://www.python.org/downloads/
+    goto :END
 )
 
-python app.py
-
+echo 正在启动 Flask 服务...
 echo.
-echo 服务已停止。按任意键关闭。
+python "%BASE%app.py"
+echo.
+echo Python app.py 已退出。返回码: %errorlevel%
+
+:END
+echo.
+echo ===== 窗口已保留，可滚动查看上方输出 =====
+echo 按任意键关闭本窗口。
 pause >nul
-popd
 endlocal

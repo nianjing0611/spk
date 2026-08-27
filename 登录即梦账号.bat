@@ -1,8 +1,12 @@
 @echo off
-setlocal enabledelayedexpansion
-chcp 65001 >nul
+REM ========== 防止闪退：双击时用 cmd /k 重启本脚本 ==========
+if "%~1"=="" (
+    start "MyTool" cmd /k ""%~f0" _inner_run_"
+    exit /b
+)
+if "%~1"=="_inner_run_" shift
 
-REM ==== 兼容中文路径：不切换目录，用完整路径调用 ====
+setlocal
 set "BASE=%~dp0"
 set "EXE=%BASE%bin\dreamina.exe"
 
@@ -10,46 +14,37 @@ echo ============================================
 echo   即梦账号登录
 echo   请按终端提示，在浏览器完成授权
 echo ============================================
-echo.
 echo 当前目录: %BASE%
 echo.
 
-REM 检查 dreamina.exe 是否存在（用完整路径）
 if not exist "%EXE%" (
-    echo [错误] 未找到: %EXE%
-    echo 请确认分发包完整，bin 目录下有 dreamina.exe
+    echo [错误] 未找到 dreamina.exe
+    echo 期望路径: %EXE%
     echo.
-    echo 【常见原因】
-    echo   - 解压目录含中文，请把分发包移动到 C:\MyTool 这样的纯英文目录
-    echo   - 杀毒软件删除了 exe，请先关闭杀毒再解压
-    echo.
-    pause
-    exit /b 1
-)
-
-REM 检查 Python
-where python >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [警告] 未检测到 Python，请先运行"安装依赖.bat"
-    echo.
+    echo 常见原因:
+    echo   1. 解压路径含中文/特殊字符 - 请移到 C:\MyTool 这样的纯英文目录
+    echo   2. 杀毒软件删除了 exe - 请关闭杀毒后重新解压
+    goto :END
 )
 
 echo 正在启动登录流程...
 echo.
 "%EXE%" login
+set "RET=%errorlevel%"
 
-if %errorlevel% neq 0 (
+if %RET% neq 0 (
     echo.
-    echo [错误] dreamina.exe 退出码: %errorlevel%
+    echo [错误] dreamina.exe 退出码: %RET%
+    echo.
     echo 可能原因:
-    echo   1. 缺少 Visual C++ 运行库 - 下载: https://aka.ms/vs/17/release/vc_redist.x64.exe
-    echo   2. 解压目录含中文/空格 - 请移动到纯英文短目录，如 C:\MyTool
-    echo   3. 杀毒软件拦截 - 请添加白名单
-    echo   4. 系统不兼容 - 需要 Windows 10 64位及以上
-    echo.
+    echo   1. 缺少 VC++ 运行库: https://aka.ms/vs/17/release/vc_redist.x64.exe
+    echo   2. 杀毒拦截 - 请添加白名单
+    echo   3. 系统版本低于 Windows 10 x64
 )
 
+:END
 echo.
-echo 登录流程已结束。按任意键关闭本窗口。
+echo ===== 窗口已保留，可滚动查看上方输出 =====
+echo 按任意键关闭本窗口。
 pause >nul
 endlocal
