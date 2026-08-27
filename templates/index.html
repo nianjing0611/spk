@@ -357,19 +357,93 @@ async function checkUpdate() {
   }
 }
 
+// ===== 工具：401 自动跳登录 + 统一错误解析 =====
+function _requireAuth(resp, on401Msg) {
+  if (resp.status === 401) {
+    const msg = on401Msg || '登录已过期，正在跳转登录页...';
+    alert(msg);
+    document.getElementById('mainApp').style.display = 'none';
+    document.getElementById('authPage').style.display = 'flex';
+    bootstrap();
+    return false;
+  }
+  return true;
+}
+
+async function _parseSafeJson(resp) {
+  try { return await resp.json(); } catch(_) { return {error: `服务器返回非 JSON (HTTP ${resp.status})`}; }
+}
+
 // ===== 图片拖拽 =====
 const dropZone = document.getElementById('dropZone');
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
 dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
 
+// 在图片列表区上方显示上传状态
+function _setUploadStatus(msg, color) {
+  let el = document.getElementById('uploadStatus');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'uploadStatus';
+    el.style.cssText = 'margin-top:6px;font-size:12px;min-height:16px';
+    document.getElementById('imgList').parentNode.insertBefore(el, document.getElementById('imgList'));
+  }
+  if (color) el.style.color = color;
+  else el.style.color = 'var(--text-dim)';
+  el.textContent = msg;
+  if (msg && color !== '#e94560') {
+    clearTimeout(_setUploadStatus._t);
+    _setUploadStatus._t = setTimeout(() => { el.textContent = ''; }, 4000);
+  }
+}
+
 async function handleFiles(files) {
-  for (const f of files) {
-    const fd = new FormData();
-    fd.append('file', f);
-    const r = await fetch('/api/upload', {method:'POST', body: fd});
-    const d = await r.json();
-    if (d.path) { images.push({path: d.path, name: d.name}); renderImages(); }
+  const arr = Array.from(files || []);
+  if (!arr.length) return;
+  let ok = 0, fail = 0;
+  _setUploadStatus(`正在上传 ${arr.length} 张图片...`, '#e94560');
+  for (let i = 0; i < arr.length; i++) {
+    const f = arr[i];
+    try {
+      if (!f.type.startsWith('image/')) {
+        fail++;
+        _setUploadStatus(`❌ 第${i+1}张不是图片类型 (${f.type || '未知'})`, '#e94560');
+        continue;
+      }
+      if (f.size > 50 * 1024 * 1024) {
+        fail++;
+        _setUploadStatus(`❌ 第${i+1}张过大 (${(f.size/1024/1024).toFixed(1)}MB)，单张请小于 50MB`, '#e94560');
+        continue;
+      }
+      const fd = new FormData();
+      fd.append('file', f);
+      const r = await fetch('/api/upload', {method:'POST', body: fd});
+      if (!_requireAuth(r)) return;
+      const d = await _parseSafeJson(r);
+      if (r.ok && d.path) {
+        images.push({path: d.path, name: d.name});
+        renderImages();
+        ok++;
+        _setUploadStatus(`✅ 已上传 ${ok}/${arr.length} (第${i+1}张: ${(f.size/1024).toFixed(0)} KB)`, '#4e9');
+      } else {
+        fail++;
+        const reason = d.error || `HTTP ${r.status}`;
+        _setUploadStatus(`❌ 第${i+1}张上传失败：${reason}`, '#e94560');
+        if (r.status === 401) return;
+      }
+    } catch (e) {
+      fail++;
+      const reason = (e && e.message) || String(e);
+      _setUploadStatus(`❌ 第${i+1}张网络错误：${reason} (请确认服务是否仍在运行)`, '#e94560');
+    }
+  }
+  if (fail === 0) {
+    _setUploadStatus(`✅ 上传完成 ${ok}/${arr.length}`, '#4e9');
+  } else if (ok === 0) {
+    _setUploadStatus(`❌ 全部失败 (${fail}张)，请查看上方提示 或 截图发给开发者`, '#e94560');
+  } else {
+    _setUploadStatus(`⚠️ 完成上传 ${ok}/${arr.length}，${fail} 张失败`, '#fc0');
   }
 }
 

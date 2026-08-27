@@ -28,6 +28,12 @@ from providers import image_provider, llm_provider
 app = Flask(__name__, template_folder=str(RESOURCE_DIR / "templates"), static_folder=None)
 CORS(app)
 
+# 上传大小限制（50MB，避免大图片直接 413 断连接）
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB
+
+# 允许的图片后缀
+ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
+
 # 全局状态（线程间读写，依赖 GIL 保证安全）
 state = {
     "running": False,
@@ -139,17 +145,69 @@ def get_state():
 
 
 # ==================== 上传路由 ====================
+@app.errorhandler(413)
+def too_large(_e):
+    return jsonify({"error": "图片过大，单张请小于 50MB"}), 413
+
+
+@app.errorhandler(401)
+def not_authed(_e):
+    return jsonify({"error": "会话已过期，请重新登录"}), 401
+
+
 @app.route("/api/upload", methods=["POST"])
 def upload():
+    # 确保目录存在（放在这里可以动态适应 BASE_DIR 解析变化）
+    try:
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"[UPLOAD] 创建上传目录失败: {e}")
+        return jsonify({"error": f"上传目录不可写: {e}"}), 500
+
     if "file" not in request.files:
-        return jsonify({"error": "无文件"}), 400
+        return jsonify({"error": "无文件，请选择图片"}), 400
     f = request.files["file"]
     if not f.filename:
         return jsonify({"error": "空文件名"}), 400
-    safe_name = os.path.basename(f.filename)
-    dest = UPLOAD_DIR / safe_name
-    f.save(str(dest))
-    return jsonify({"path": str(dest), "name": safe_name})
+
+    # 1) 只保留文件名（防路径穿越）+ 去非法字符
+    raw_name = os.path.basename(f.filename)
+    # Windows 非法字符过滤
+    safe_stem = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", Path(raw_name).stem)
+    ext = Path(raw_name).suffix.lower()
+
+    # 2) 后缀校验
+    if ext not in ALLOWED_EXT:
+        print(f"[UPLOAD] 拒绝: 后缀不支持 {raw_name}")
+        return jsonify({"error": f"不支持的文件类型 {ext}，支持: jpg/png/gif/bmp/webp"}), 400
+
+    # 3) 重名自动加序号
+    final_stem = safe_stem or "image"
+    dest = UPLOAD_DIR / f"{final_stem}{ext}"
+    n = 1
+    while dest.exists():
+        dest = UPLOAD_DIR / f"{final_stem}_{n}{ext}"
+        n += 1
+
+    # 4) 先保存到临时文件，再原子重命名（避免半写入）
+    tmp_path = UPLOAD_DIR / f".tmp_{os.getpid()}_{int(time.time()*1000)}{ext}"
+    try:
+        f.save(str(tmp_path))
+        size = tmp_path.stat().st_size
+        if size == 0:
+            raise IOError("上传文件为空")
+        os.replace(str(tmp_path), str(dest))
+    except PermissionError as e:
+        tmp_path.unlink(missing_ok=True)
+        print(f"[UPLOAD] 写入失败(权限): {e}")
+        return jsonify({"error": f"写入失败: 权限不足，请移到 C:\\MyTool 等可写目录"}), 500
+    except Exception as e:
+        tmp_path.unlink(missing_ok=True)
+        print(f"[UPLOAD] 写入失败: {e}")
+        return jsonify({"error": f"写入失败: {e}"}), 500
+
+    print(f"[UPLOAD] OK {dest.name} ({size//1024} KB)")
+    return jsonify({"path": str(dest), "name": dest.name, "size": size})
 
 
 # ==================== 批量生成路由 ====================
@@ -454,11 +512,15 @@ def _compare_versions(a, b):
 
 def main():
     """启动 Flask。"""
+    from config_manager import get_version_info
+    vi = get_version_info()
+    ver = vi.get("version", "0.0.0")
     print("=" * 50)
-    print("MyTool v1.0.0")
+    print(f"MyTool v{ver}")
     print("访问 http://127.0.0.1:9527/")
+    print("停止: 关闭本窗口 或 Ctrl+C")
     print("=" * 50)
-    app.run(host="127.0.0.1", port=9527, debug=False)
+    app.run(host="127.0.0.1", port=9527, debug=False, threaded=True)
 
 
 if __name__ == "__main__":
