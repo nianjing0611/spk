@@ -1,5 +1,4 @@
 @echo off
-REM ========== 防止闪退：双击时用 cmd /k 重启本脚本 ==========
 if "%~1"=="" (
     start "MyTool" cmd /k ""%~f0" _inner_run_"
     exit /b
@@ -11,40 +10,40 @@ set "BASE=%~dp0"
 set "EXE=%BASE%bin\dreamina.exe"
 
 echo ============================================
-echo   即梦账号登录
-echo   请按终端提示，在浏览器完成授权
+echo   Deng Lu Ji Meng Zhang Hao
+echo   Qing an zhong duan ti shi, zai liu lan qi wan cheng shou quan
 echo ============================================
-echo 当前目录: %BASE%
+echo Dang qian mu lu: %BASE%
 echo.
 
 if not exist "%EXE%" (
-    echo [错误] 未找到 dreamina.exe
-    echo 期望路径: %EXE%
+    echo [Cuo wu] Wei zhao dao dreamina.exe
+    echo Qi wang lu jing: %EXE%
     echo.
-    echo 常见原因:
-    echo   1. 解压路径含中文/特殊字符 - 请移到 C:\MyTool 这样的纯英文目录
-    echo   2. 杀毒软件删除了 exe - 请关闭杀毒后重新解压
+    echo Chang jian yuan yin:
+    echo   1. Jie ya lu jing han zhong wen/teshu zifu - qing yi dao C:\MyTool
+    echo   2. Sha du ruan jian shan chu le exe - qing guan bi sha du chong xin jie ya
     goto :END
 )
 
-echo 正在启动登录流程...
+echo Zheng zai qi dong deng lu liu cheng...
 echo.
 "%EXE%" login
 set "RET=%errorlevel%"
 
 if %RET% neq 0 (
     echo.
-    echo [错误] dreamina.exe 退出码: %RET%
+    echo [Cuo wu] dreamina.exe tui chu ma: %RET%
     echo.
-    echo 可能原因:
-    echo   1. 缺少 VC++ 运行库: https://aka.ms/vs/17/release/vc_redist.x64.exe
-    echo   2. 杀毒拦截 - 请添加白名单
-    echo   3. 系统版本低于 Windows 10 x64
+    echo Ke neng yuan yin:
+    echo   1. Que shao VC++ yun xing ku: https://aka.ms/vs/17/release/vc_redist.x64.exe
+    echo   2. Sha du ruan jian lan jie - qing tian jia bai ming dan
+    echo   3. Xi tong ban ben di yu Windows 10 x64
 )
 
 :END
 echo.
-echo ===== 窗口已保留，可滚动查看上方输出 =====
-echo 按任意键关闭本窗口。
+echo ===== Chuang kou yi bao liu, ke gun dong cha kan shang fang shu chu =====
+echo An ren yi jian guan bi ben chuang kou.
 pause >nul
 endlocal

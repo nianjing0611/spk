@@ -9,44 +9,71 @@ setlocal
 set "BASE=%~dp0"
 
 echo ============================================
-echo   启动 MyTool 服务
-echo   启动后浏览器访问 http://127.0.0.1:9527/
+echo   Qi dong MyTool fu wu
+echo   Qi dong hou liu lan qi fang wen http://127.0.0.1:9527/
 echo ============================================
-echo 当前目录: %BASE%
+echo Dang qian mu lu: %BASE%
 echo.
 
 if not exist "%BASE%app.py" (
-    echo [错误] 未找到 app.py
-    echo 请确认分发包完整，或移动到纯英文目录重试。
+    echo [Cuo wu] Wei zhao dao app.py
+    echo Qing que ren fen fa bao wan zheng.
     goto :END
 )
 
 if not exist "%BASE%config.json" (
     if exist "%BASE%config.example.json" (
         copy "%BASE%config.example.json" "%BASE%config.json" >nul
-        echo [首次运行] 已从 config.example.json 复制 config.json
-        echo 请在网页设置中填入 DeepSeek API Key。
+        echo [Shou ci yun xing] Yi cong config.example.json fu zhi config.json
+        echo Qing zai wang ye she ye zhong tian ru DeepSeek API Key.
         echo.
     )
 )
 
 where python >nul 2>nul
 if %errorlevel% neq 0 (
-    echo [错误] 未检测到 Python。
-    echo 请先运行"安装依赖.bat"，或下载 Python 3.10+ 并勾选 Add to PATH:
+    echo [Cuo wu] Wei jian ce dao Python.
+    echo Qing xian yun xing An Zhuang Yi Lai.bat,
+    echo huo xia zai Python 3.10+ bing gou xuan Add to PATH:
     echo   https://www.python.org/downloads/
     goto :END
 )
 
-echo 正在启动 Flask 服务...
+REM ==== Jian cha yi lai: flask ====
+python -c "import flask" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [Ti shi] Jian ce dao Python yi lai wei an zhuang.
+    echo Jiang zi dong yun xing An Zhuang Yi Lai.bat ...
+    echo.
+    REM Sheng ji pip
+    echo [1/2] Sheng ji pip...
+    python -m pip install --upgrade pip
+    echo.
+    echo [2/2] An zhuang Python yi lai...
+    python -m pip install -r "%BASE%requirements.txt"
+    if %errorlevel% neq 0 (
+        echo.
+        echo [Cuo wu] Yi lai an zhuang shi bai. Jie tu shang fang shu chu.
+        echo Chang shi shou dong yun xing An Zhuang Yi Lai.bat.
+        goto :END
+    )
+    echo Yi lai an zhuang wan cheng.
+    echo.
+)
+
+echo Zheng zai qi dong Flask fu wu...
+echo ============================================
+echo   Ye mian di zhi: http://127.0.0.1:9527/
+echo   Ting zhi fu wu: guan bi ben chuang kou
+echo ============================================
 echo.
 python "%BASE%app.py"
 echo.
-echo Python app.py 已退出。返回码: %errorlevel%
+echo Python app.py yi tui chu. Fan hui ma: %errorlevel%
 
 :END
 echo.
-echo ===== 窗口已保留，可滚动查看上方输出 =====
-echo 按任意键关闭本窗口。
+echo ===== Chuang kou yi bao liu, ke gun dong cha kan shang fang shu chu =====
+echo An ren yi jian guan bi ben chuang kou.
 pause >nul
 endlocal

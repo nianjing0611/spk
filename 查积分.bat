@@ -10,24 +10,24 @@ set "BASE=%~dp0"
 set "EXE=%BASE%bin\dreamina.exe"
 
 echo ============================================
-echo   查询即梦账号积分余额
+echo   Cha Xun Ji Meng Zhang Hao Ji Fen Yu E
 echo ============================================
-echo 当前目录: %BASE%
+echo Dang qian mu lu: %BASE%
 echo.
 
 if not exist "%EXE%" (
-    echo [错误] 未找到 dreamina.exe
-    echo 请移动分发包到纯英文目录重试。
+    echo [Cuo wu] Wei zhao dao dreamina.exe
+    echo Qing yi dong fen fa bao dao chun ying wen mu lu chong shi.
     goto :END
 )
 
 "%EXE%" user_credit
 echo.
-echo 查询返回码: %errorlevel%
+echo Cha xun fan hui ma: %errorlevel%
 
 :END
 echo.
-echo ===== 窗口已保留，可滚动查看上方输出 =====
-echo 按任意键关闭本窗口。
+echo ===== Chuang kou yi bao liu, ke gun dong cha kan shang fang shu chu =====
+echo An ren yi jian guan bi ben chuang kou.
 pause >nul
 endlocal

@@ -9,31 +9,31 @@ setlocal
 set "BASE=%~dp0"
 
 echo ============================================
-echo   安装 Python 依赖（只需执行一次）
+echo   An Zhuang Python yi lai (zhi xu zhi xing yi ci)
 echo ============================================
-echo 当前目录: %BASE%
+echo Dang qian mu lu: %BASE%
 echo.
 
 where python >nul 2>nul
 if %errorlevel% neq 0 (
-    echo [错误] 未检测到 Python。
-    echo 请下载安装 Python 3.10+，安装时勾选 "Add Python to PATH":
+    echo [Cuo wu] Wei jian ce dao Python.
+    echo Qing xia zai an zhuang Python 3.10+, an zhuang shi gou xuan "Add Python to PATH":
     echo   https://www.python.org/downloads/
     goto :END
 )
 
-echo [1/2] 升级 pip...
+echo [1/2] Sheng ji pip...
 python -m pip install --upgrade pip
 echo.
-echo [2/2] 安装 requirements.txt 中的依赖...
+echo [2/2] An zhuang Python yi lai bao...
 python -m pip install -r "%BASE%requirements.txt"
 echo.
-echo ===== 依赖安装完成 =====
-echo 如果上面有红色错误，把错误截图发出来。
+echo ===== Yi lai an zhuang wan cheng =====
+echo Ru guo you cuo wu xin xi, jie tu shang fang shu chu.
 
 :END
 echo.
-echo ===== 窗口已保留，可滚动查看上方输出 =====
-echo 按任意键关闭本窗口。
+echo ===== Chuang kou yi bao liu, ke gun dong cha kan shang fang shu chu =====
+echo An ren yi jian guan bi ben chuang kou.
 pause >nul
 endlocal
