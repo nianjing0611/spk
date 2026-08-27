@@ -54,18 +54,8 @@ _CONSIST_MAP = {
     "layout": "构图布局",
 }
 
-# system prompt：识别原图类别 → 换同类别全新背景（一致性逻辑全在这里，每条 prompt 不重复）
-SYSTEM_PROMPT = """你是电商商品图图生图提示词专家。根据用户指令，生成 {count} 条换背景的提示词。
-
-核心：这是图生图，模型能看到原图。识别原图的场景类别、风格、色调，生成 {count} 条换背景提示词。每条以"换背景为"开头，写一个全新的背景场景。
-
-规则：
-1. 每条 ≤50 字，以"换背景为"开头
-2. 只输出 JSON 字符串数组，不要 Markdown、编号、解释
-3. 恰好生成 {count} 条
-4. {consistency_clause}
-5. {count} 条必须是完全不同的背景场景
-6. 不改变产品主体、包装文字、品牌、价格、规格"""
+# system prompt：极简，对齐参考软件
+SYSTEM_PROMPT = """你是即梦AI生图提示词专家。输出JSON数组格式的即梦提示词。每条具体描述场景、光线、构图、道具，包含电商商品卡和1:1比例，不超过100字。直接输出JSON数组。"""
 
 
 def _build_consistency_clause(consistency: dict) -> str:
@@ -110,13 +100,8 @@ def generate(product_info: dict, count: int, llm_cfg: dict) -> list[str]:
 
 
 def _call_api(product_info, count, base_url, api_key, model, temperature) -> list:
-    """调 OpenAI 兼容 /chat/completions。"""
-    consistency = product_info.get("consistency") or {}
+    """调 OpenAI 兼容 /chat/completions。对齐参考软件：极简调用。"""
     user_msg = _build_user_msg(product_info, count)
-    sys_content = SYSTEM_PROMPT.format(
-        count=count,
-        consistency_clause=_build_consistency_clause(consistency),
-    )
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
@@ -124,14 +109,14 @@ def _call_api(product_info, count, base_url, api_key, model, temperature) -> lis
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": sys_content},
+            {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_msg},
         ],
         "temperature": temperature,
-        "max_tokens": min(8192, max(4096, count * 300)),
+        "max_tokens": 2000,
     }
     r = requests.post(
-        f"{base_url}/chat/completions", headers=headers, json=payload, timeout=90
+        f"{base_url}/chat/completions", headers=headers, json=payload, timeout=60
     )
     r.raise_for_status()
     msg = r.json()["choices"][0]["message"]
@@ -145,7 +130,7 @@ def _call_api(product_info, count, base_url, api_key, model, temperature) -> lis
 
 
 def _build_user_msg(product_info: dict, count: int) -> str:
-    """构造用户消息：核心指令放 user message，防止 v4-pro 忽略 system prompt。"""
+    """构造用户消息：对齐参考软件，用户描述直接传给 AI。"""
     desc = (product_info.get("description") or "").strip()
     consistency = product_info.get("consistency") or {}
     consist_suffix = _build_consistency_suffix(consistency)
@@ -160,23 +145,21 @@ def _build_user_msg(product_info: dict, count: int) -> str:
             product_parts.append(f"{label}:{v}")
     product_text = "，".join(product_parts) if product_parts else ""
 
-    instruction = desc if desc else "仅更换背景"
-
-    # 核心指令放 user message，防止 v4-pro 忽略 system prompt
-    core_rules = f"""【重要】你是图生图提示词专家。必须遵守以下规则：
-1. 生成 {count} 条换背景提示词，每条以"换背景为"开头
-2. 只输出 JSON 字符串数组
-3. {consist_suffix and '每条末尾加"' + consist_suffix + '"'}
-4. 不改变产品主体、包装文字、品牌、价格、规格
-
-指令：{instruction}"""
-
+    # 用户描述是主要内容，商品字段可选
+    parts = []
+    if desc:
+        parts.append(desc)
+    else:
+        parts.append("仅更换背景")
     if product_text:
-        core_rules += f"\n商品：{product_text}"
+        parts.append(f"商品：{product_text}")
+    if consist_suffix:
+        parts.append(consist_suffix)
     if locked:
-        core_rules += f"\n必须保留：{locked}"
+        parts.append(f"必须保留：{locked}")
+    parts.append(f"生成 {count} 条换背景提示词")
 
-    return core_rules
+    return "，".join(parts)
 
 
 def _extract_json_array(text: str) -> list:
